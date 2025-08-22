@@ -1,0 +1,11 @@
+student_id,student_name,subject,grade,test_date
+HS001,Nguyễn Văn An,Toán,5.5,2025-07-15
+HS001,Nguyễn Văn An,Lý,6.0,2025-07-16
+HS002,Trần Thị Bình,Toán,8.5,2025-07-15
+HS002,Trần Thị Bình,Lý,9.0,2025-07-16
+HS003,Lê Văn Cường,Toán,4.0,2025-07-15
+HS003,Lê Văn Cường,Lý,5.0,2025-07-16
+HS004,Phạm Thị Dung,Toán,9.0,2025-07-15
+HS004,Phạm Thị Dung,Lý,8.0,2025-07-16
+HS005,Hoàng Thị E,Toán,7.0,2025-07-15
+HS005,Hoàng Thị E,Lý,7.5,2025-07-16

@@ -1,0 +1,16 @@
+streamlit
+fastapi
+uvicorn[standard]
+python-multipart
+langchain
+langchain-community
+sentence-transformers
+chromadb
+langchain-openrouter
+pypdf
+python-docx
+pytesseract
+pdf2image
+Pillow
+requests
+python-dotenv 
