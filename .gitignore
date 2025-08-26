@@ -4,7 +4,11 @@
 .env.*
 *.env
 secrets.toml
+.streamlit/secrets.toml
 .streamlit/secrets_copy.toml
+# Cho phép template files
+!.streamlit/secrets.toml.template
+!.streamlit/config.toml
 config.ini
 credentials.json
 api_keys.txt
