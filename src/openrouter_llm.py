@@ -9,7 +9,7 @@ class OpenRouterLLM:
     def __init__(self, model_name: str, api_key: str):
         self.model = model_name
         self.api_key = api_key
-        self.api_url = "https://api.openrouter.ai/api/v1/chat/completions"
+        self.api_url = "https://openrouter.ai/api/v1/chat/completions"  # Fixed URL!
         
         self.headers = {
             "Authorization": f"Bearer {api_key}",
@@ -24,9 +24,10 @@ class OpenRouterLLM:
         Kiểm tra kết nối internet bằng cách ping google.com
         """
         try:
-            requests.get("https://www.google.com", timeout=5)
-            return True
-        except:
+            response = requests.get("https://www.google.com", timeout=10)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"🔍 Kiểm tra kết nối internet thất bại: {e}")
             return False
 
     def invoke(self, prompt: str, max_retries=3, **kwargs) -> str:
@@ -36,9 +37,9 @@ class OpenRouterLLM:
         import time
         from requests.exceptions import RequestException, HTTPError, ConnectionError
         
-        # Kiểm tra kết nối internet
+        # Kiểm tra kết nối internet trước
         if not self.check_internet_connection():
-            raise ConnectionError("❌ Không thể kết nối internet. Vui lòng kiểm tra kết nối mạng của bạn.")
+            return "❌ Không thể kết nối internet. Vui lòng kiểm tra kết nối mạng của bạn và thử lại."
 
         payload = {
             "model": self.model,
@@ -51,20 +52,22 @@ class OpenRouterLLM:
 
         for attempt in range(max_retries):
             try:
+                print(f"🔄 Đang thử kết nối đến OpenRouter API (lần {attempt + 1}/{max_retries})...")
+                
                 response = requests.post(
                     self.api_url,
                     headers=self.headers,
                     json=payload,
-                    timeout=60  # Tăng timeout lên 60 giây
+                    timeout=30  # Giảm timeout xuống 30 giây
                 )
                 
                 if response.status_code == 503:
                     wait_time = min((attempt + 1) * 5, 20)  # 5, 10, 15, 20 giây, tối đa 20 giây
                     print(f"🔄 API không khả dụng. Thử lại sau {wait_time} giây...")
-                elif response.status_code == 401:
-                    raise ValueError("❌ API key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại.")
                     time.sleep(wait_time)
                     continue
+                elif response.status_code == 401:
+                    return "❌ API key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại."
                     
                 response.raise_for_status()
                 
@@ -75,16 +78,42 @@ class OpenRouterLLM:
                 print(f"⚠️ Định dạng phản hồi không mong đợi: {json.dumps(result, indent=2)}")
                 return "Xin lỗi, tôi đang gặp vấn đề trong việc xử lý. Vui lòng thử lại sau."
 
-            except RequestException as e:
-                error_detail = e.response.text if hasattr(e, 'response') and e.response else str(e)
-                print(f"❌ Lỗi khi gọi OpenRouter API (lần {attempt + 1}/{max_retries}): {error_detail}")
+            except (ConnectionError, requests.exceptions.ConnectionError) as e:
+                print(f"❌ Lỗi kết nối đến OpenRouter API (lần {attempt + 1}/{max_retries}): {str(e)}")
+                if "getaddrinfo failed" in str(e):
+                    print("💡 Lỗi DNS resolution. Có thể do:")
+                    print("   - Vấn đề với DNS server")
+                    print("   - Firewall hoặc proxy chặn kết nối")
+                    print("   - Không có kết nối internet ổn định")
                 
-                if attempt == max_retries - 1:  # Nếu là lần thử cuối cùng
-                    if isinstance(e, HTTPError) and e.response.status_code == 503:
-                        return "Xin lỗi, dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau vài phút."
-                    return "Đã xảy ra lỗi khi xử lý yêu cầu của bạn. Vui lòng thử lại."
+                if attempt == max_retries - 1:
+                    return "❌ Không thể kết nối đến OpenRouter API. Vui lòng kiểm tra kết nối mạng và thử lại sau."
                     
+                wait_time = (attempt + 1) * 3
+                print(f"⏳ Đợi {wait_time} giây trước khi thử lại...")
+                time.sleep(wait_time)
+                
+            except requests.exceptions.Timeout as e:
+                print(f"⏰ Timeout khi gọi API (lần {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt == max_retries - 1:
+                    return "⏰ Kết nối quá chậm. Vui lòng thử lại sau."
                 wait_time = (attempt + 1) * 2
-                time.sleep(wait_time)  # Đợi trước khi thử lại
+                time.sleep(wait_time)
+                
+            except requests.exceptions.HTTPError as e:
+                print(f"❌ Lỗi HTTP (lần {attempt + 1}/{max_retries}): {e.response.status_code} - {e.response.text}")
+                if e.response.status_code == 503:
+                    if attempt == max_retries - 1:
+                        return "🔧 Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau vài phút."
+                    wait_time = min((attempt + 1) * 5, 30)
+                    time.sleep(wait_time)
+                else:
+                    return f"❌ Lỗi API: {e.response.status_code} - {e.response.text}"
+                    
+            except Exception as e:
+                print(f"❌ Lỗi không xác định (lần {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt == max_retries - 1:
+                    return f"❌ Đã xảy ra lỗi không xác định: {str(e)}"
+                time.sleep(2)
                 
         return "Không thể kết nối với dịch vụ sau nhiều lần thử. Vui lòng thử lại sau."

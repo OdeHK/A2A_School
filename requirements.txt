@@ -1,16 +1,42 @@
+# Core web framework dependencies
 streamlit
 fastapi
 uvicorn[standard]
 python-multipart
+
+# AI/ML and RAG dependencies
 langchain
 langchain-community
 sentence-transformers
 chromadb
 langchain-openrouter
+
+# Document processing
 pypdf
 python-docx
 pytesseract
 pdf2image
 Pillow
+
+# Data processing and analysis
+pandas
+altair
+numpy
+
+# HTTP requests and environment
 requests
-python-dotenv 
+python-dotenv
+
+# Additional utilities
+pydantic
+typing-extensions
+
+# Database (if using SQLite features)
+sqlite3
+
+# Optional: For better async support
+aiofiles
+
+# Development and testing (optional)
+pytest
+pytest-asyncio 

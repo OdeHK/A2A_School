@@ -1,0 +1,318 @@
+{
+  "schema_version": "1.0",
+  "name": "School Management RAG System",
+  "description": "Multi-agent RAG system for school management with 3 specialized agents",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "id": "student_support",
+      "name": "Student Support Agent",
+      "description": "Hỗ trợ học sinh với câu hỏi học thuật và lịch học",
+      "capabilities": [
+        "answer_questions",
+        "recommend_materials",
+        "set_reminders",
+        "study_planning"
+      ],
+      "endpoints": {
+        "ask_question": "/student/ask",
+        "get_recommendations": "/student/recommend",
+        "set_reminder": "/student/reminder",
+        "get_schedule": "/student/schedule"
+      },
+      "input_schema": {
+        "ask_question": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "description": "Câu hỏi của học sinh"
+            },
+            "subject": {
+              "type": "string",
+              "description": "Môn học (tùy chọn)"
+            },
+            "student_id": {
+              "type": "string",
+              "description": "ID học sinh"
+            }
+          },
+          "required": [
+            "question",
+            "student_id"
+          ]
+        },
+        "get_recommendations": {
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string",
+              "description": "Môn học"
+            },
+            "difficulty": {
+              "type": "string",
+              "enum": [
+                "easy",
+                "medium",
+                "hard"
+              ]
+            },
+            "student_id": {
+              "type": "string",
+              "description": "ID học sinh"
+            }
+          },
+          "required": [
+            "subject",
+            "student_id"
+          ]
+        },
+        "set_reminder": {
+          "type": "object",
+          "properties": {
+            "student_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "class",
+                "exam",
+                "assignment"
+              ]
+            },
+            "subject": {
+              "type": "string"
+            },
+            "datetime": {
+              "type": "string",
+              "format": "datetime"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "student_id",
+            "type",
+            "subject",
+            "datetime"
+          ]
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "datetime"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      }
+    },
+    {
+      "id": "teacher_support",
+      "name": "Teacher Support Agent",
+      "description": "Hỗ trợ giáo viên với phương pháp dạy và quản lý lớp",
+      "capabilities": [
+        "suggest_grouping",
+        "teaching_methods",
+        "teaching_materials",
+        "schedule_management"
+      ],
+      "endpoints": {
+        "group_students": "/teacher/group",
+        "suggest_method": "/teacher/method",
+        "get_materials": "/teacher/materials",
+        "manage_schedule": "/teacher/schedule"
+      },
+      "input_schema": {
+        "group_students": {
+          "type": "object",
+          "properties": {
+            "student_data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "student_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "average_score": {
+                    "type": "number"
+                  },
+                  "learning_style": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "criteria": {
+              "type": "string",
+              "enum": [
+                "academic_level",
+                "learning_style"
+              ]
+            }
+          },
+          "required": [
+            "student_data"
+          ]
+        },
+        "suggest_method": {
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string"
+            },
+            "class_level": {
+              "type": "string"
+            },
+            "topic": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subject",
+            "class_level",
+            "topic"
+          ]
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "datetime"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      }
+    },
+    {
+      "id": "data_analysis",
+      "name": "Data Analysis Agent",
+      "description": "Phân tích dữ liệu điểm số và xu hướng học tập",
+      "capabilities": [
+        "analyze_performance",
+        "aggregate_scores",
+        "identify_at_risk",
+        "predict_trends"
+      ],
+      "endpoints": {
+        "analyze_class": "/analysis/class",
+        "aggregate_data": "/analysis/aggregate",
+        "find_at_risk": "/analysis/at-risk",
+        "predict_trends": "/analysis/trends"
+      },
+      "input_schema": {
+        "analyze_class": {
+          "type": "object",
+          "properties": {
+            "class_data": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "student_id": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "number"
+                  },
+                  "exam_date": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "class_data"
+          ]
+        },
+        "predict_trends": {
+          "type": "object",
+          "properties": {
+            "historical_data": {
+              "type": "array"
+            },
+            "prediction_period": {
+              "type": "integer",
+              "default": 6
+            }
+          },
+          "required": [
+            "historical_data"
+          ]
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "datetime"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "student_support_card": {
+    "title": "🎓 Student Support Agent",
+    "description": "Trợ lý học tập thông minh cho học sinh",
+    "capabilities": [
+      "💡 Trả lời câu hỏi học thuật (Toán, Lý, Hóa, Anh, Văn)",
+      "📚 Đề xuất tài liệu học phù hợp theo trình độ",
+      "⏰ Nhắc nhở lịch học và bài kiểm tra",
+      "📝 Lập kế hoạch học tập cá nhân"
+    ],
+    "example_queries": [
+      "Giải phương trình bậc hai x² + 5x + 6 = 0",
+      "Định luật Newton thứ hai là gì?",
+      "Đề xuất tài liệu ôn tập môn Toán nâng cao",
+      "Nhắc tôi kiểm tra môn Lý vào thứ 6 tuần sau"
+    ],
+    "mcp_config": {
+      "server_name": "student_support_server",
+      "endpoints": [
+        "ask",
+        "recommend",
+        "remind",
+        "plan"
+      ]
+    }
+  },
+  "teacher_support_card": {
+    "title": "👨‍🏫 Teacher Support Agent",
+    "description": "Trợ lý sư phạm cho giáo viên",
+    "capabilities": [
+      "👥 Gợi ý chia nhóm học sinh theo trình độ/phong cách học",
+      "📖 Đề xuất phương pháp giảng dạy hiệu quả",
+      "📋 Cung cấp tài liệu giảng dạy và giáo án",
+      "📅 Quản lý lịch dạy và nhắc nhở"
+    ],
+    "example_queries": [
+      "Chia nhóm 30 học sinh theo trình độ học lực",
+      "Phương pháp dạy hình học lớp 10 hiệu quả",
+      "Tài liệu giảng dạy chủ đề ma trận",
+      "Nhắc tôi chuẩn bị bài kiểm tra 15 phút"
+    ],
+    "mcp_config": {
+      "server_name": "teacher_support_server",
+      "endpoints": [
+        "group",
+        "method",
+        "materials",
+        "schedule"
+      ]
+    }
+  },
+  "data_analysis_card": {
+    "title": "📊 Data Analysis Agent",
+    "description": "Chuyên gia phân tích dữ liệu giáo dục",
+    "capabilities": [
+      "📈 Phân tích kết quả kiểm tra và học lực lớp",
+      "📋 Tổng hợp điểm số theo lớp, môn, khối",
+      "⚠️ Phát hiện học sinh cần hỗ trợ đặc biệt",
+      "🔮 Dự đoán xu hướng học tập tương lai"
+    ],
+    "example_queries": [
+      "Phân tích điểm kiểm tra toán của lớp 10A1",
+      "Tổng hợp điểm trung bình theo khối lớp 10",
+      "Học sinh nào cần hỗ trợ thêm?",
+      "Xu hướng học lực lớp 10A2 trong 6 tháng tới"
+    ],
+    "mcp_config": {
+      "server_name": "data_analysis_server",
+      "endpoints": [
+        "analyze",
+        "aggregate",
+        "at-risk",
+        "trends"
+      ]
+    }
+  }
+}
