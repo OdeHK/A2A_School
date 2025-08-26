@@ -1,12 +1,11 @@
 # ===== SECRETS & ENVIRONMENT =====
 # Environment variables và API keys
 .env
-.env.local
-.env.development
-.env.test
-.env.production
+.env.*
+*.env
 secrets.toml
 .streamlit/secrets.toml
+.streamlit/secrets*.toml
 config.ini
 credentials.json
 api_keys.txt

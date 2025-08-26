@@ -1,4 +1,0 @@
-OPENROUTER_API_KEY="YOUR_VALID_API_KEY_HERE"
-
-# (Tùy chọn) Bạn có thể đổi model ở đây
-OPENROUTER_MODEL="openai/gpt-oss-20b:free"
