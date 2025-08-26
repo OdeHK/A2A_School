@@ -1,15 +1,81 @@
-# Môi trường ảo và dependencies
+# ===== SECRETS & ENVIRONMENT =====
+# Environment variables và API keys
 .env
+.env.local
+.env.development
+.env.test
+.env.production
+secrets.toml
+.streamlit/secrets.toml
+config.ini
+credentials.json
+api_keys.txt
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ===== PYTHON =====
+# Môi trường ảo
 venv/
 /venv/
 *.venv
-.secrets.toml
-# Thư mục cache của Python
+env/
+ENV/
+
+# Cache và compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# File cấu hình của editor
+# ===== IDE & EDITORS =====
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Database file
+# ===== DATABASE =====
 quizzes.db
+*.sqlite
+*.sqlite3
+*.db
+
+# ===== LOGS =====
+*.log
+logs/
+log/
+
+# ===== TEMPORARY FILES =====
+*.tmp
+*.temp
+temp/
+tmp/
+
+# ===== OS SPECIFIC =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== PROJECT SPECIFIC =====
+# Chroma vector database
+chroma_db/
+vector_store/
+embeddings/
