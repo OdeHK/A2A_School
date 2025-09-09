@@ -1,0 +1,19 @@
+# Core dependencies
+langchain
+langchain-core
+langchain-nvidia-ai-endpoints
+langchain-google-genai
+langchain-huggingface
+langchain-chroma
+langchain-community
+
+# Data processing
+pydantic
+pydantic-settings
+pytesseract
+pymupdf
+Pillow
+
+# UI
+gradio
+
