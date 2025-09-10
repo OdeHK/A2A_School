@@ -18,7 +18,7 @@ Các tính năng dự kiến:
 - **Thêm khả năng hiểu khái quát nội dung tài liệu**: Tóm tắt theo chương, theo phần
 - **Thêm khả năng sử dụng các công cụ bên ngoài**: Agent có thể truy cập và sử dụng các API bên ngoài như: Google Forms, Google Classroom,...
 - **Phân tích kết quả bài kiểm tra**: Phân tích các phần kiến thức học sinh còn yếu dựa trên kết quả bài kiểm tra
-- 
+
 ## 🏗️ Kiến trúc hệ thống
 
 ### Core Services
@@ -80,11 +80,11 @@ services/
 ├── document_loader.py          # Document loading strategies
 ├── document_chunker.py         # Document chunking strategies
 ├── vector_service.py           # Vector store management
+├── embedding_service.py        # Embedding management
 └── llm_service.py             # LLM integration
 
 ui/
 ├── app.py                     # Main Gradio interface
-└── my_app.py                  # Alternative UI
 
 config/
 ├── settings.py                # Application configuration
