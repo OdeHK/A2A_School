@@ -8,6 +8,7 @@ import os
 import logging
 from langchain.schema.document import Document
 from langchain.prompts import ChatPromptTemplate
+from services.embedding_service import EmbeddingType
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class RagService:
         chunker: Optional[DocumentChunker] = None, 
         llm_service: Optional[LLMService] = None,
         vector_service: Optional[VectorService] = None,
-        embedding_type: str = "google_gen_ai"
+        embedding_type: EmbeddingType = EmbeddingType.GOOGLE_GEN_AI
     ) -> None:
         """
         Initialize RAG service with optional components.
@@ -132,7 +133,7 @@ class RagService:
     def retrieve_documents(
         self, 
         query: str, 
-        top_k: int = 5,
+        top_k: int = 10,
         vector_service: Optional[VectorService] = None
     ) -> List[Document]:
         """
