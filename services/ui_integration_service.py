@@ -9,9 +9,10 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from services.rag_service import RagService
-from services.document_chunker import ChunkingStrategyType
-from services.document_loader import DocumentType
+from services.rag.rag_service import RagService
+from services.document_processing.document_chunker import ChunkingStrategyType
+from services.document_processing.document_loader import DocumentType
+from services.document_processing.document_management_service import DocumentManagementService
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class UIIntegrationService:
         self.current_files: List[str] = []
         self.processing_status: Dict[str, Any] = {}
         self._initialize_rag_service()
+        self._initialize_document_management_service()
     
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> None:
         """
@@ -55,44 +57,83 @@ class UIIntegrationService:
             logger.error(f"Error initializing RAG service: {str(e)}")
             # Initialize with default settings as fallback
             self.rag_service = RagService()
-    
-    def handle_file_upload(self, uploaded_file_path:str) -> Tuple[List[str], str]:
+
+    def _initialize_document_management_service(self):
         """
-        Handle file upload from Gradio interface.
-        
-        Args:
-            uploaded_file: Gradio file upload object
-            
-        Returns:
-            Tuple of (updated_file_list, status_message)
+        Initialize or reinitialize the document management service.
         """
         try:
-            if uploaded_file_path is None:
-                return self.current_files, "No file uploaded"
-            
-            # Get the file path from Gradio upload
-            file_path = str(uploaded_file_path)
-            file_name = Path(file_path).name
-            
-            # Validate file
-            if not Path(file_path).exists():
-                return self.current_files, f"Error: File {file_name} not found"
-            
-            # Check file type
-            if not file_name.lower().endswith('.pdf'):
-                return self.current_files, f"Error: Only PDF files are supported. Got: {file_name}"
-            
-            # Add to current files list if not already present
-            if file_path not in self.current_files:
-                self.current_files.append(file_path)
-                logger.info(f"Added file to list: {file_name}")
-            
-            return self.current_files, f"File {file_name} added successfully"
-            
+            # TODO: Modify DocumentManagementService to accept loader and chunker strategies
+            self.doc_management_service = DocumentManagementService()
+            logger.info("Document management service initialized")
         except Exception as e:
-            error_msg = f"Error handling file upload: {str(e)}"
-            logger.error(error_msg)
-            return self.current_files, error_msg
+            self.doc_management_service = None
+            logger.error(f"Error initializing document management service: {str(e)}") 
+
+
+    def process_uploaded_document(self, uploaded_file_path:str): 
+        """Handle file upload from Gradio interface using DocumentManagementService."""
+
+        if not self.doc_management_service:
+            return "Document management service not available", "Error"
+        
+        try:
+            # Use the document management service to process the uploaded file
+            # TODO: Determine which file types to support
+            result = self.doc_management_service.process_uploaded_document(file_path=uploaded_file_path,
+                                                                  rag_service=self.rag_service,
+                                                                  extract_toc=True)
+            
+            self.current_files.append(result.file_name)
+
+            return (f"✅ Đã xử lý thành công: {result.file_name}\n"
+                   f"📄 Số trang: {result.metadata.page_count}\n"
+                   f"🔪 Số đoạn: {result.metadata.chunk_count}\n")
+        except Exception as e:
+            return f"❌ Error: {str(e)}", "Error"
+        
+
+    def get_current_files(self) -> List[str]:
+        """Get the current list of files."""
+        return self.current_files
+    
+    # def handle_file_upload(self, uploaded_file_path:str) -> Tuple[List[str], str]:
+    #     """
+    #     Handle file upload from Gradio interface.
+        
+    #     Args:
+    #         uploaded_file: Gradio file upload object
+            
+    #     Returns:
+    #         Tuple of (updated_file_list, status_message)
+    #     """
+    #     try:
+    #         if uploaded_file_path is None:
+    #             return self.current_files, "No file uploaded"
+            
+    #         # Get the file path from Gradio upload
+    #         file_path = str(uploaded_file_path)
+    #         file_name = Path(file_path).name
+            
+    #         # Validate file
+    #         if not Path(file_path).exists():
+    #             return self.current_files, f"Error: File {file_name} not found"
+            
+    #         # Check file type
+    #         if not file_name.lower().endswith('.pdf'):
+    #             return self.current_files, f"Error: Only PDF files are supported. Got: {file_name}"
+            
+    #         # Add to current files list if not already present
+    #         if file_path not in self.current_files:
+    #             self.current_files.append(file_path)
+    #             logger.info(f"Added file to list: {file_name}")
+            
+    #         return self.current_files, f"File {file_name} added successfully"
+            
+    #     except Exception as e:
+    #         error_msg = f"Error handling file upload: {str(e)}"
+    #         logger.error(error_msg)
+    #         return self.current_files, error_msg
     
     def handle_url_input(self, url: str) -> Tuple[List[str], str, str]:
         """
@@ -120,55 +161,55 @@ class UIIntegrationService:
             logger.error(error_msg)
             return self.current_files, "", error_msg
     
-    def process_selected_document(self, file_path:str) -> str:
-        """
-        Process the selected document through RAG pipeline.
+    # def process_selected_document(self, file_path:str) -> str:
+    #     """
+    #     Process the selected document through RAG pipeline.
         
-        Args:
-            selected_items: List of selected file paths or URLs
+    #     Args:
+    #         selected_items: List of selected file paths or URLs
             
-        Returns:
-            Status message
-        """
-        try:
-            if not file_path:
-                return "No document selected for processing"
+    #     Returns:
+    #         Status message
+    #     """
+    #     try:
+    #         if not file_path:
+    #             return "No document selected for processing"
             
-            # Check if it's a file path or URL
-            if file_path.startswith('http'):
-                return "URL processing not yet implemented. Please upload a PDF file."
+    #         # Check if it's a file path or URL
+    #         if file_path.startswith('http'):
+    #             return "URL processing not yet implemented. Please upload a PDF file."
             
             
-            if not Path(file_path).exists():
-                return f"File does not exist: {file_path}"
+    #         if not Path(file_path).exists():
+    #             return f"File does not exist: {file_path}"
             
-            # Ensure RAG service is initialized
-            if not self.rag_service:
-                self._initialize_rag_service()
+    #         # Ensure RAG service is initialized
+    #         if not self.rag_service:
+    #             self._initialize_rag_service()
                 
-            # Double check initialization
-            if not self.rag_service:
-                return "❌ Failed to initialize RAG service"
+    #         # Double check initialization
+    #         if not self.rag_service:
+    #             return "❌ Failed to initialize RAG service"
             
-            # Process through RAG pipeline
-            logger.info(f"Processing document: {file_path}")
-            result = self.rag_service.process_uploaded_document(file_path)
+    #         # Process through RAG pipeline
+    #         logger.info(f"Processing document: {file_path}")
+    #         result = self.rag_service.process_uploaded_document(file_path)
             
-            # Store processing status
-            self.processing_status[file_path] = result
+    #         # Store processing status
+    #         self.processing_status[file_path] = result
             
-            if result["status"] == "success":
-                return (f"✅ Successfully processed {result['file_name']}\n"
-                       f"📄 Pages: {result['document_count']}\n"
-                       f"🔪 Chunks: {result['chunk_count']}\n"
-                       f"📝 Ready for querying!")
-            else:
-                return f"❌ Error processing {file_path}: {result.get('error', 'Unknown error')}"
+    #         if result["status"] == "success":
+    #             return (f"✅ Successfully processed {result['file_name']}\n"
+    #                    f"📄 Pages: {result['document_count']}\n"
+    #                    f"🔪 Chunks: {result['chunk_count']}\n"
+    #                    f"📝 Ready for querying!")
+    #         else:
+    #             return f"❌ Error processing {file_path}: {result.get('error', 'Unknown error')}"
                 
-        except Exception as e:
-            error_msg = f"Error processing document: {str(e)}"
-            logger.error(error_msg)
-            return f"❌ {error_msg}"
+    #     except Exception as e:
+    #         error_msg = f"Error processing document: {str(e)}"
+    #         logger.error(error_msg)
+    #         return f"❌ {error_msg}"
     
     def update_chunker_strategy(self, strategy: str) -> str:
         """

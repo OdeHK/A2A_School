@@ -1,14 +1,14 @@
-from services.document_loader import DocumentLoader, DocumentType
-from services.document_chunker import DocumentChunker, ChunkingStrategyType
-from services.vector_service import VectorService
-from services.llm_service import LLMService
+from services.document_processing.document_loader import DocumentLoader, DocumentType
+from services.document_processing.document_chunker import DocumentChunker, ChunkingStrategyType
+from .vector_service import VectorService
+from .llm_service import LLMService
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import os
 import logging
 from langchain.schema.document import Document
 from langchain.prompts import ChatPromptTemplate
-from services.embedding_service import EmbeddingType
+from .embedding_service import EmbeddingType
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class RagService:
         chunker: Optional[DocumentChunker] = None, 
         llm_service: Optional[LLMService] = None,
         vector_service: Optional[VectorService] = None,
-        embedding_type: EmbeddingType = EmbeddingType.GOOGLE_GEN_AI
+        embedding_type: EmbeddingType = EmbeddingType.HUGGINGFACE
     ) -> None:
         """
         Initialize RAG service with optional components.
@@ -129,6 +129,21 @@ class RagService:
                 "error": str(e),
                 "message": error_msg
             }
+
+    def add_document_chunks_to_vector_store(self, chunks: List[Document]) -> None:
+        """
+        Add document chunks to vector store.
+        
+        Args:
+            chunks: List of document chunks to add
+        """
+        try:
+            logger.info(f"Adding {len(chunks)} chunks to vector store")
+            self.vector_service.add_documents(chunks)
+            logger.info("Successfully added chunks to vector store")
+        except Exception as e:
+            logger.error(f"Error adding chunks to vector store: {str(e)}")
+            raise
 
     def retrieve_documents(
         self, 

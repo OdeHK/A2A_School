@@ -1,12 +1,22 @@
-from enum import Enum
-from abc import ABC, abstractmethod
-from typing import List, Iterator, Literal, Optional, Dict, Any
+
 import logging
+import io
+import pytesseract
+import pymupdf
+
+from PIL import Image
+from enum import Enum
 from pathlib import Path
 from urllib.parse import urlparse
+from abc import ABC, abstractmethod
+from typing import List, Iterator, Literal, Optional, Dict, Any
+
+
 from langchain.schema.document import Document
-from langchain_community.document_loaders import PyMuPDFLoader
-from config.settings import get_settings
+from langchain_community.document_loaders import PyMuPDFLoader, PDFPlumberLoader
+
+
+#from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +24,12 @@ class DocumentType(str, Enum):
     """Supported document types"""
     PDF = "pdf"
 
+
 class PDFLoaderType(str, Enum):
     """PDF loader strategies"""
     PYMUPDF = "pymupdf"
+    PDFPLUMBER = "pdfplumber"
+    TESSERACT_OCR = "tesseract_ocr"
 
 class SourceType(str, Enum):
     """Document source types"""
@@ -60,6 +73,58 @@ class LoadingStrategy(ABC):
         """
         pass
     
+# === STRATEGY PATTERN IMPLEMENTATION ===
+
+class PDFPlumberLoadingStrategy(LoadingStrategy):
+    @property
+    def strategy_name(self) -> str:
+        return PDFLoaderType.PDFPLUMBER
+
+    def load_documents(self, source: str, **kwargs) -> List[Document]:
+
+        loader = PDFPlumberLoader(source)
+        return loader.load()
+
+    def lazy_load_documents(self, source: str, **kwargs):
+        loader = PDFPlumberLoader(source)
+        yield from loader.lazy_load()
+
+
+class TesseractOCR(LoadingStrategy):
+    @property
+    def strategy_name(self) -> str:
+        return PDFLoaderType.TESSERACT_OCR
+
+    def load_documents(self, source: str, **kwargs) -> List[Document]:
+        document = pymupdf.open(source)
+        docs = []
+        for page_num in range(len(document)):
+            # Ví dụ Windows: đường dẫn tới tesseract.exe
+            pytesseract.pytesseract.tesseract_cmd = r"C:\Users\likgn\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+            page = document.load_page(page_num)
+            # Xuất trang dưới dạng ảnh (250dpi)
+            pix = page.get_pixmap(dpi=250)
+            img = Image.open(io.BytesIO(pix.tobytes(output="png")))
+
+            # OCR với tiếng Việt: lang="vie"
+            page_text = pytesseract.image_to_string(img, lang="vie+eng")
+            if page_text:
+                docs.append(Document(page_content=page_text, metadata={"source": source, "page": page_num + 1}))
+
+        return docs
+
+    def lazy_load_documents(self, source: str, **kwargs):
+        # Ví dụ Windows: đường dẫn tới tesseract.exe
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Users\likgn\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
+        document = pymupdf.open(source)
+        for page_num in range(len(document)):
+            page = document.load_page(page_num)
+            pix = page.get_pixmap(dpi=300)
+            img = Image.open(io.BytesIO(pix.tobytes(output="png")))
+            page_text = pytesseract.image_to_string(img, lang="vie+eng")
+            if page_text:
+                yield Document(page_content=page_text, metadata={"source": source, "page": page_num + 1})
+
 class PyMuPDFLoadingStrategy(LoadingStrategy):
 
     def __init__(self, mode: Literal["page", "single"] = "page") -> None:
@@ -69,7 +134,9 @@ class PyMuPDFLoadingStrategy(LoadingStrategy):
         Args:
             mode: Loading mode ('page' or 'single')
         """
-        self.mode = mode
+        if mode not in ("page", "single"):
+            raise ValueError("mode must be either 'page' or 'single'")
+        self.mode: Literal["page", "single"] = mode
 
     @property
     def strategy_name(self) -> str:
@@ -92,23 +159,16 @@ class PyMuPDFLoadingStrategy(LoadingStrategy):
 
 class LoadingStrategyFactory:
     """Factory for creating loading strategies."""
-    
+
     @staticmethod
     def create_pdf_strategy(loader_type: PDFLoaderType, **kwargs) -> LoadingStrategy:
-        """
-        Create PDF loading strategy.
-        
-        Args:
-            loader_type: Type of PDF loader
-            **kwargs: Additional configuration
-            
-        Returns:
-            LoadingStrategy: PDF loading strategy
-        """
         if loader_type == PDFLoaderType.PYMUPDF:
             mode = kwargs.get('mode', 'page')
             return PyMuPDFLoadingStrategy(mode=mode)
-        
+        elif loader_type == PDFLoaderType.PDFPLUMBER:
+            return PDFPlumberLoadingStrategy()
+        elif loader_type == PDFLoaderType.TESSERACT_OCR:
+            return TesseractOCR()
         else:
             raise ValueError(f"Unknown PDF loader type: {loader_type}")
     
@@ -154,7 +214,6 @@ class DocumentLoader:
             strategy: Loading strategy to use
         """
         self.strategy = strategy
-        self.settings = get_settings()
         
         if strategy:
             logger.info(f"Initialized DocumentLoader with strategy: {strategy.strategy_name}")
@@ -274,4 +333,31 @@ class DocumentLoader:
         return cls(strategy)
 
 if __name__ == "__main__":
-    document_loader = DocumentLoader.create_with_config(DocumentType.PDF)
+    sample_pdf = r"C:\Users\likgn\Downloads\chatbot\chatbot\STSV-2024-ONLINE-1-20.pdf"  # Replace with your sample PDF path
+    print(f"Testing document loading strategies on: {sample_pdf}\n")
+
+    # PyMuPDF
+    # print("--- PyMuPDF Strategy ---")
+    # pymupdf_loader = DocumentLoader.create_with_config(DocumentType.PDF, {"pdf_loader_type": PDFLoaderType.PYMUPDF})
+    # docs = pymupdf_loader.load(sample_pdf)
+    # print(f"Loaded {len(docs)} documents.")
+    # if docs:
+    #     print("First doc preview:", docs[5].page_content, "...\n")
+
+    # # PDFPlumber
+    # print("--- PDFPlumber Strategy ---")
+    # pdfplumber_loader = DocumentLoader.create_with_config(DocumentType.PDF, {"pdf_loader_type": PDFLoaderType.PDFPLUMBER})
+    # docs = pdfplumber_loader.load(sample_pdf)
+    # print(f"Loaded {len(docs)} documents.")
+    # if docs:
+    #     print("First doc preview:", docs[5].page_content, "...\n")
+
+    # Tesseract OCR
+    # print("--- Tesseract OCR Strategy ---")
+    # ocr_loader = DocumentLoader.create_with_config(DocumentType.PDF, {"pdf_loader_type": PDFLoaderType.TESSERACT_OCR})
+    # docs = ocr_loader.load(sample_pdf)
+    # print(f"Loaded {len(docs)} documents.")
+    # if docs:
+    #     print("First 5 pages preview:")
+    #     for doc in docs[:5]:
+    #         print(doc.page_content, "...\n")

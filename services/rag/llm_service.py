@@ -67,7 +67,8 @@ def get_nvidia_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS
         model=model_name,
         nvidia_api_key=api_key,
         streaming=True,
-        callbacks=[StreamingStdOutCallbackHandler()]
+        callbacks=[StreamingStdOutCallbackHandler()],
+        max_completion_tokens=100000
     )
     
 
