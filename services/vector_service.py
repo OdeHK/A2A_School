@@ -4,8 +4,8 @@ from typing import List, Optional
 import logging
 
 from config.constants import DatabaseConstants
-from services.embedding_service import EmbeddingService, create_google_embedding_service, create_nvidia_embedding_service
-from services.embedding_service import EmbeddingType
+from services.rag.embedding_service import EmbeddingService, create_google_embedding_service, create_nvidia_embedding_service
+from services.rag.embedding_service import EmbeddingType
 
 # Configure logging
 logger = logging.getLogger(__name__)
