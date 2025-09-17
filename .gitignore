@@ -1,3 +1,7 @@
+# Temporary folders
+session_data/
+vector_db/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
