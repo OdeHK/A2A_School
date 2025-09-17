@@ -135,7 +135,7 @@ class FileConstants:
 # === Document Repository folder names ===
 class DocumentRepositoryConstants:
     """Hằng số liên quan đến các folder trong DocumentRepository"""
-    BASE_DOCUMENTS_DIR = "documents"
+    BASE_DOCUMENTS_DIR = "session_data"
     SESSIONS_DIR = "sessions"
     TEMP_DIR = "temp"
     RAW_FILES_DIR = "raw_files"
