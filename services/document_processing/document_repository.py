@@ -3,6 +3,7 @@ Session-based Document Repository for managing documents, metadata, and ToC stor
 Uses JSON files for simple, session-scoped storage.
 """
 
+
 import json
 import uuid
 import shutil
@@ -17,6 +18,7 @@ from services.models import (
     SessionMetadata, 
     ProcessingStatus
 )
+from config.constants import DocumentRepositoryConstants
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ class DocumentRepository:
     Each session gets its own folder with organized subdirectories.
     """
     
-    def __init__(self, base_documents_dir: str = "documents"):
+    def __init__(self, base_documents_dir: str = DocumentRepositoryConstants.BASE_DOCUMENTS_DIR):
         """
         Initialize repository with base documents directory.
         
@@ -35,8 +37,8 @@ class DocumentRepository:
             base_documents_dir: Base directory for all document storage
         """
         self.base_dir = Path(base_documents_dir)
-        self.sessions_dir = self.base_dir / "sessions"
-        self.temp_dir = self.base_dir / "temp"
+        self.sessions_dir = self.base_dir / DocumentRepositoryConstants.SESSIONS_DIR
+        self.temp_dir = self.base_dir / DocumentRepositoryConstants.TEMP_DIR
         
         # Create base directories if they don't exist
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -63,9 +65,9 @@ class DocumentRepository:
         session_dir.mkdir(exist_ok=True)
         
         # Create subdirectories
-        (session_dir / "raw_files").mkdir(exist_ok=True)
-        (session_dir / "metadata").mkdir(exist_ok=True)
-        (session_dir / "toc").mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.RAW_FILES_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.METADATA_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.TOC_DIR).mkdir(exist_ok=True)
         
         # Create session metadata
         session_metadata = SessionMetadata(
@@ -73,7 +75,7 @@ class DocumentRepository:
             created_date=datetime.now(),
             last_accessed=datetime.now(),
             documents=[],
-            vector_store_path=str(session_dir / "vector_store")
+            vector_store_path=str(session_dir / DocumentRepositoryConstants.VECTOR_STORE_DIR)
         )
         
         # Save session metadata
@@ -135,6 +137,8 @@ class DocumentRepository:
         """Ensure current session exists, create new one if needed."""
         if self.current_session_dir is None:
             self.create_new_session()
+        # At this point, self.current_session_dir must not be None
+        assert self.current_session_dir is not None, "Session directory should not be None after ensure."
         return self.current_session_dir
     
     def store_uploaded_file(self, source_file_path: str, document_id: Optional[str] = None) -> str:
@@ -150,18 +154,14 @@ class DocumentRepository:
         """
         session_dir = self._ensure_session()
         source_path = Path(source_file_path)
-        
         if document_id is None:
             document_id = f"doc_{uuid.uuid4().hex[:8]}"
-        
         # Determine destination file name
         file_extension = source_path.suffix
         dest_filename = f"{document_id}{file_extension}"
-        dest_path = session_dir / "raw_files" / dest_filename
-        
+        dest_path = session_dir / DocumentRepositoryConstants.RAW_FILES_DIR / dest_filename
         # Copy file to session directory
         shutil.copy2(source_path, dest_path)
-        
         logger.info(f"Stored file {source_path.name} as {dest_filename} in session {self.current_session_id}")
         return document_id
     
@@ -173,7 +173,7 @@ class DocumentRepository:
             metadata: Document metadata to save
         """
         session_dir = self._ensure_session()
-        metadata_file = session_dir / "metadata" / f"{metadata.document_id}.json"
+        metadata_file = session_dir / DocumentRepositoryConstants.METADATA_DIR / f"{metadata.document_id}.json"
         
         with open(metadata_file, 'w', encoding='utf-8') as f:
             json.dump(metadata.model_dump(mode='json'), f, indent=2, ensure_ascii=False)
@@ -196,7 +196,7 @@ class DocumentRepository:
         if self.current_session_dir is None:
             return None
         
-        metadata_file = self.current_session_dir / "metadata" / f"{document_id}.json"
+        metadata_file = self.current_session_dir / DocumentRepositoryConstants.METADATA_DIR / f"{document_id}.json"
         
         if not metadata_file.exists():
             return None
@@ -220,7 +220,7 @@ class DocumentRepository:
             toc: Table of contents to save
         """
         session_dir = self._ensure_session()
-        toc_file = session_dir / "toc" / f"{document_id}_toc.json"
+        toc_file = session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
         
         with open(toc_file, 'w', encoding='utf-8') as f:
             json.dump(toc.model_dump(mode='json'), f, indent=2, ensure_ascii=False)
@@ -240,7 +240,7 @@ class DocumentRepository:
         if self.current_session_dir is None:
             return None
         
-        toc_file = self.current_session_dir / "toc" / f"{document_id}_toc.json"
+        toc_file = self.current_session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
         
         if not toc_file.exists():
             return None
@@ -268,7 +268,7 @@ class DocumentRepository:
         if self.current_session_dir is None:
             return None
         
-        raw_files_dir = self.current_session_dir / "raw_files"
+        raw_files_dir = self.current_session_dir / DocumentRepositoryConstants.RAW_FILES_DIR
         
         # Look for file with document_id prefix
         for file_path in raw_files_dir.glob(f"{document_id}.*"):
@@ -287,7 +287,7 @@ class DocumentRepository:
             return []
         
         documents = []
-        metadata_dir = self.current_session_dir / "metadata"
+        metadata_dir = self.current_session_dir / DocumentRepositoryConstants.METADATA_DIR
         
         for metadata_file in metadata_dir.glob("*.json"):
             try:
@@ -306,7 +306,7 @@ class DocumentRepository:
         if self.current_session_dir is None:
             return None
         
-        return str(self.current_session_dir / "vector_store")
+        return str(self.current_session_dir / DocumentRepositoryConstants.VECTOR_STORE_DIR)
     
     def cleanup_temp_files(self) -> None:
         """Clean up temporary files."""

@@ -132,6 +132,18 @@ class FileConstants:
     MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB total
 
 
+# === Document Repository folder names ===
+class DocumentRepositoryConstants:
+    """Hằng số liên quan đến các folder trong DocumentRepository"""
+    BASE_DOCUMENTS_DIR = "documents"
+    SESSIONS_DIR = "sessions"
+    TEMP_DIR = "temp"
+    RAW_FILES_DIR = "raw_files"
+    METADATA_DIR = "metadata"
+    TOC_DIR = "toc"
+    VECTOR_STORE_DIR = "vector_store"
+
+
 class AgentConstants:
     """Hằng số liên quan đến AI Agents"""
     
