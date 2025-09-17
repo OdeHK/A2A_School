@@ -29,7 +29,7 @@ class ModelConstants:
     EMBEDDING_MODELS = {
         "nvidia": "nvidia/llama-3.2-nemoretriever-300m-embed-v1",
         "google_gen_ai": "models/gemini-embedding-001",
-        "huggingface": "Alibaba-NLP/gte-multilingual-base2"
+        "huggingface": "Alibaba-NLP/gte-multilingual-base"
     }
     
     HUGGINGFACE_CACHE_DIR = "./.cache/huggingface"
