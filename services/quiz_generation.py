@@ -1,5 +1,5 @@
 from typing import TypedDict, Dict, Any, List
-from services.rag_service import RagService
+from services.rag.rag_service import RagService
 from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
