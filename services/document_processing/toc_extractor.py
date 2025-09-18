@@ -266,35 +266,7 @@ class TableOfContentsExtractor:
         Returns:
             List of TocSection objects
         """
-        # sections = []
-        # lines = response_text.split('\\n')
-        
-        # for line in lines:
-        #     line = line.strip()
-        #     if not line:
-        #         continue
-        #     # Example expected formats:
-        #     # "1,Chapter Title,5"
-        #     # "1.1,Section Title,10"
-
-            
-        #     parts = [part.strip() for part in line.split(',')]  
-        #     # trichs xuat cac phan tu string
-        #     if len(parts) == 3:
-        #         section_id = parts[0]
-        #         title = parts[1]
-        #         page_num = int(parts[2]) if parts[2].isdigit() else None
-        #         level = section_id.count('.') + 1 
-
-        #         if title:
-        #             section = TocSection(
-        #                 section_id=section_id,
-        #                 section_title=title,
-        #                 level=level,
-        #                 page_number=page_num
-        #             )
-        #             sections.append(section)
-
+        # TODO: Implement parsing logic
         return sections
     
 
