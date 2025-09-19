@@ -1,0 +1,3 @@
+{
+  "response": "Bài viết trình bày ví dụ PHP truy vấn dữ liệu từ bảng “ten_bang” bằng mysqli, cho thấy cách lấy và in ra từng dòng. Sau đó so sánh hai cách truyền tham số: hàm `addTen($num)` chỉ thay đổi biến cục bộ vì truyền giá trị, trong khi `addTen(&$num)` sử dụng tham chiếu và thay đổi biến gốc. Đoạn văn còn minh họa cách toán tử `!==` phân biệt kiểu dữ liệu của hai biến, cùng với mô tả các toán tử logic như `&&`, `||`, `!`, `xor` và các toán tử chuỗi. Cuối cùng, cung cấp ví dụ về tham số mặc định trong hàm và cách hiểu các quyền truy cập (read, write, execute) trong chế độ `chmod` khi biểu diễn bằng hệ cơ số tám."
+}

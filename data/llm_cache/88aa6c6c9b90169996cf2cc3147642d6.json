@@ -1,0 +1,3 @@
+{
+  "response": "**PHP (viết tắt của “Portable Hypertext Preprocessor”)** là ngôn ngữ lập trình chạy phía máy chủ, được thiết kế đặc biệt để phát triển các ứng dụng web.  \n\n- **Nội dung động**: PHP giúp tạo, chỉnh sửa và hiển thị nội dung trên trang web theo thời gian thực.  \n- **Kết nối cơ sở dữ liệu**: Dễ dàng truy cập và thao tác với các hệ quản trị dữ liệu như MySQL, PostgreSQL, v.v.  \n- **Xử lý biểu mẫu**: Nhận dữ liệu từ người dùng, xử lý và lưu trữ.  \n- **Thực hiện các tác vụ máy chủ**: Tự động hoá các công việc như gửi email, xử lý file, tính toán, v.v.\n\nVì vậy, PHP là công cụ chủ yếu trong việc xây dựng và quản lý các trang web, ứng dụng web và hệ thống backend hiện đại."
+}

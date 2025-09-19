@@ -1,0 +1,3 @@
+{
+  "response": "Tác phẩm trình bày ví dụ PHP thực hiện truy vấn dữ liệu từ MySQL, bao gồm cả câu lệnh `SELECT` đơn giản và truy vấn dùng `Prepared Statement` với điều kiện `WHERE`. Nó hiển thị cách kết nối tới cơ sở dữ liệu, chạy câu lệnh, đọc từng hàng trả về bằng `fetch_assoc()`, in kết quả dưới dạng chuỗi ID, công ty, email và năm, và xử lý trường hợp không có dữ liệu. Mã còn thực hiện đóng statement và kết nối, cũng như minh hoạ cách sử dụng `bind_param()` để truyền tham số dưới dạng số nguyên. Ngoài ra, đoạn văn cũng mở rộng với một giải thích ngắn gọn về tính năng hàm trong PHP."
+}

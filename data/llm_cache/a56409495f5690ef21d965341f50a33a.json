@@ -1,0 +1,3 @@
+{
+  "response": "**PHP là gì?**\n\n- **PHP** là viết tắt của *“PHP: Hypertext Preprocessor”*.\n- Đây là một ngôn ngữ lập trình **máy chủ (server‑side)** được thiết kế đặc biệt cho phát triển ứng dụng web.\n- PHP thường được dùng để:\n  1. **Tạo nội dung động** trên các trang web (thay đổi nội dung tùy theo dữ liệu và quy trình).\n  2. **Kết nối và tương tác với cơ sở dữ liệu** (MySQL, PostgreSQL, SQLite,...).\n  3. **Xử lý các biểu mẫu** (form) và dữ liệu gửi từ client.\n  4. **Thực hiện các tác vụ máy chủ** như đăng nhập, gửi email, xử lý file, chuyển đổi dữ liệu, v.v.\n\n- PHP tồn tại lâu rồi và được cộng đồng rộng lớn hỗ trợ, đem lại sức mạnh, tính linh hoạt và khả năng mở rộng cho mọi loại dự án web, từ nhỏ tới lớn."
+}

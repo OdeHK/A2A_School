@@ -1,0 +1,99 @@
+# config/detector_profiles.yml
+# File cấu hình linh hoạt cho việc phát hiện chương, mục.
+# Tách biệt logic và cấu hình, giúp dễ dàng mở rộng cho các loại tài liệu khác nhau.
+
+# Cấu hình mặc định, sẽ được kế thừa bởi các profile khác
+default: &default
+  # Các mẫu regex để phát hiện tiêu đề, sắp xếp theo độ ưu tiên
+  # Tập trung vào các mẫu cấu trúc chung nhất
+  patterns:
+    # Mẫu cho "Bài X:", "Chương X:", "Phần II:" (ưu tiên cao nhất)
+    - pattern: '^(BÀI|Bài|CHƯƠNG|Chương|PHẦN|Phần)\s+(\d+|[IVXLC]+)[\s\.\:]+(.+)$'
+      type: 'main_chapter'
+
+    # Mẫu cho các tiêu đề có cấu trúc "Lời mở đầu", "Tổng kết", etc.
+    - pattern: '^(Lời mở đầu|Tổng kết|Kết luận|Giới thiệu|Mở đầu|Tóm tắt)\.?(.*)$'
+      type: 'main_chapter'
+
+    # Mẫu cho các mục con dạng "1.", "2.", "3." (chỉ số đơn)
+    - pattern: '^(\d{1,2})\.?\s+([A-ZÀ-Ỹ][^\.]{10,})$'
+      type: 'sub_section'
+
+    # Mẫu cho các mục con có số phức tạp "1.1", "2.3.4" nhưng có nội dung dài
+    - pattern: '^(\d+(\.\d+)+)\.?\s+([A-ZÀ-Ỹ][^\.]{15,})$'
+      type: 'sub_section'
+
+  # Các từ khóa để loại trừ (tiêu đề không thể chứa các từ này)
+  exclude_keywords:
+    - 'trang'
+    - 'page'
+    - 'hình'
+    - 'figure'
+    - 'bảng'
+    - 'table'
+    - 'phụ lục'
+    - 'appendix'
+    - 'tài liệu tham khảo'
+    - 'references'
+    - 'mục lục'
+    - 'table of contents'
+    - 'index'
+    - 'danh mục'
+    - 'phụ chú'
+    - 'ghi chú'
+    - '...............'  # Loại bỏ dấu chấm liên tiếp trong mục lục
+
+# Profile mặc định, chung nhất cho các loại tài liệu
+generic:
+  <<: *default # Kế thừa từ default
+  # Các từ khóa chung thường xuất hiện trong tiêu đề chính
+  main_chapter_keywords:
+    - 'giới thiệu'
+    - 'tổng quan'
+    - 'cơ bản'
+    - 'nâng cao'
+    - 'kết luận'
+    - 'ứng dụng'
+    - 'tóm tắt'
+    - 'introduction'
+    - 'php'
+    - 'lập trình'
+    - 'xampp'
+    - 'database'
+    - 'cơ sở dữ liệu'
+    - 'web'
+    - 'bảo mật'
+    - 'security'
+    - 'hướng dẫn'
+    - 'tutorial'
+    - 'framework'
+    - 'thư viện'
+    - 'library'
+    - 'overview'
+    - 'conclusion'
+    - 'summary'
+  subsection_keywords:
+    - 'định nghĩa'
+    - 'ví dụ'
+    - 'bài tập'
+    - 'lưu ý'
+    - 'definition'
+    - 'example'
+    - 'exercise'
+
+# Profile riêng cho tài liệu Lập trình (có thể kích hoạt khi cần)
+programming:
+  <<: *default
+  main_chapter_keywords:
+    - 'cài đặt'
+    - 'cú pháp'
+    - 'biến'
+    - 'hàm'
+    - 'vòng lặp'
+    - 'cơ sở dữ liệu'
+    - 'bảo mật'
+    - 'thuật toán'
+  subsection_keywords:
+    - 'biến toàn cục'
+    - 'tham số'
+    - 'debug'

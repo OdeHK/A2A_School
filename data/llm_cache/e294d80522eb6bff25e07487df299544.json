@@ -1,0 +1,3 @@
+{
+  "response": "Mô hình MVC trong PHP kết hợp **Model**, **View** và **Controller** để tách rời dữ liệu, giao diện và logic xử lý, giúp mã bảo trì dễ dàng và mở rộng. Phần đầu sách giới thiệu cú pháp cơ bản, biến, hằng, kiểu dữ liệu và toán tử, đồng thời minh hoạ cách khai báo biến bằng ký hiệu `$`. Các khối điều kiện (`if`, `else if`, `else`) và vòng lặp được trình bày để kiểm soát luồng thực thi, cho phép phân tích dữ liệu và thực hiện các hành động tùy vào điều kiện. Khi triển khai ứng dụng thực tế, lập trình viên thường tạo và chạy chương trình mẫu đầu tiên, kiểm tra chức năng rồi mở rộng sang các tính năng phức tạp hơn."
+}
