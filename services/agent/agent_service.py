@@ -184,8 +184,6 @@ class AgentService:
             
             # Invoke the agent
             result = self.agent.invoke({"messages": messages})
-            
-            logger.info(f"Result from agent: {result}")
 
             # Extract the response
             if result and "messages" in result:
@@ -193,8 +191,10 @@ class AgentService:
                 response = last_message.content if hasattr(last_message, 'content') else str(last_message)
 
                 # Log intermediate messages if any
+                log_message = f"Agent response:"
                 for message in result["messages"]:
-                    logger.info(f"Message: {message}")
+                    log_message += f"\n\n- {type(message).__name__}: {message}"
+                logger.info(log_message)
             else:
                 response = "Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu."
             
