@@ -191,6 +191,10 @@ class AgentService:
             if result and "messages" in result:
                 last_message = result["messages"][-1]
                 response = last_message.content if hasattr(last_message, 'content') else str(last_message)
+
+                # Log intermediate messages if any
+                for message in result["messages"]:
+                    logger.info(f"Message: {message}")
             else:
                 response = "Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu."
             
