@@ -6,14 +6,12 @@ This service acts as a bridge between the UI and the core RAG services.
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
-import tempfile
-import shutil
 
+from services.quiz_generation import QuizGenerationService
 from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
-from services.document_processing.document_loader import DocumentType
 from services.document_processing.document_management_service import DocumentManagementService
-from config.settings import get_settings
+from services.agent.agent_service import AgentService
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +24,18 @@ class UIIntegrationService:
     def __init__(self):
         """Initialize the UI integration service."""
         self.rag_service: Optional[RagService] = None
+        self.doc_management_service: Optional[DocumentManagementService] = None
+        self.quiz_generation_service: Optional[QuizGenerationService] = None
+        self.agent_service: Optional[AgentService] = None
         self.current_files: List[str] = []
         self.processing_status: Dict[str, Any] = {}
+        
+        # Initialize services in correct order
         self._initialize_rag_service()
         self._initialize_document_management_service()
-    
+        self._initialize_quiz_generation_service()
+        self._initialize_agent_service()
+
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> None:
         """
         Initialize or reinitialize the RAG service with specified configuration.
@@ -70,6 +75,46 @@ class UIIntegrationService:
             self.doc_management_service = None
             logger.error(f"Error initializing document management service: {str(e)}") 
 
+    def _initialize_quiz_generation_service(self):
+        """
+        Initialize or reinitialize the quiz generation service.
+        """
+        try:
+            # Ensure RAG service is initialized first
+            if not self.rag_service:
+                self._initialize_rag_service()
+            
+            # Check again after initialization
+            if self.rag_service:
+                self.quiz_generation_service = QuizGenerationService(rag_service=self.rag_service)
+                logger.info("Quiz generation service initialized")
+            else:
+                logger.error("Cannot initialize quiz generation service: RAG service is None")
+                self.quiz_generation_service = None
+        except Exception as e:
+            logger.error(f"Error initializing quiz generation service: {str(e)}")
+            self.quiz_generation_service = None
+
+    def _initialize_agent_service(self):
+        """
+        Initialize the agent service with all required services.
+        """
+        try:
+            # Ensure all required services are available
+            if self.rag_service and self.quiz_generation_service and self.doc_management_service:
+                self.agent_service = AgentService(
+                    rag_service=self.rag_service,
+                    quiz_generation_service=self.quiz_generation_service,
+                    document_management_service=self.doc_management_service,
+                    llm_service=self.rag_service.llm_service
+                )
+                logger.info("Agent service initialized successfully")
+            else:
+                logger.warning("Cannot initialize agent service: Required services not available")
+                self.agent_service = None
+        except Exception as e:
+            logger.error(f"Error initializing agent service: {str(e)}")
+            self.agent_service = None
 
     def process_uploaded_document(self, uploaded_file_path:str): 
         """Handle file upload from Gradio interface using DocumentManagementService."""
@@ -87,8 +132,8 @@ class UIIntegrationService:
             self.current_files.append(result.file_name)
 
             return (f"✅ Đã xử lý thành công: {result.file_name}\n"
-                   f"📄 Số trang: {result.metadata.page_count}\n"
-                   f"🔪 Số đoạn: {result.metadata.chunk_count}\n")
+                   f"📄 Số trang: {result.metadata.page_count if result.metadata else 'N/A'}\n"
+                   f"🔪 Số đoạn: {result.metadata.chunk_count if result.metadata else 'N/A'}\n")
         except Exception as e:
             return f"❌ Error: {str(e)}", "Error"
         
@@ -97,43 +142,6 @@ class UIIntegrationService:
         """Get the current list of files."""
         return self.current_files
     
-    # def handle_file_upload(self, uploaded_file_path:str) -> Tuple[List[str], str]:
-    #     """
-    #     Handle file upload from Gradio interface.
-        
-    #     Args:
-    #         uploaded_file: Gradio file upload object
-            
-    #     Returns:
-    #         Tuple of (updated_file_list, status_message)
-    #     """
-    #     try:
-    #         if uploaded_file_path is None:
-    #             return self.current_files, "No file uploaded"
-            
-    #         # Get the file path from Gradio upload
-    #         file_path = str(uploaded_file_path)
-    #         file_name = Path(file_path).name
-            
-    #         # Validate file
-    #         if not Path(file_path).exists():
-    #             return self.current_files, f"Error: File {file_name} not found"
-            
-    #         # Check file type
-    #         if not file_name.lower().endswith('.pdf'):
-    #             return self.current_files, f"Error: Only PDF files are supported. Got: {file_name}"
-            
-    #         # Add to current files list if not already present
-    #         if file_path not in self.current_files:
-    #             self.current_files.append(file_path)
-    #             logger.info(f"Added file to list: {file_name}")
-            
-    #         return self.current_files, f"File {file_name} added successfully"
-            
-    #     except Exception as e:
-    #         error_msg = f"Error handling file upload: {str(e)}"
-    #         logger.error(error_msg)
-    #         return self.current_files, error_msg
     
     def handle_url_input(self, url: str) -> Tuple[List[str], str, str]:
         """
@@ -161,59 +169,9 @@ class UIIntegrationService:
             logger.error(error_msg)
             return self.current_files, "", error_msg
     
-    # def process_selected_document(self, file_path:str) -> str:
-    #     """
-    #     Process the selected document through RAG pipeline.
-        
-    #     Args:
-    #         selected_items: List of selected file paths or URLs
-            
-    #     Returns:
-    #         Status message
-    #     """
-    #     try:
-    #         if not file_path:
-    #             return "No document selected for processing"
-            
-    #         # Check if it's a file path or URL
-    #         if file_path.startswith('http'):
-    #             return "URL processing not yet implemented. Please upload a PDF file."
-            
-            
-    #         if not Path(file_path).exists():
-    #             return f"File does not exist: {file_path}"
-            
-    #         # Ensure RAG service is initialized
-    #         if not self.rag_service:
-    #             self._initialize_rag_service()
-                
-    #         # Double check initialization
-    #         if not self.rag_service:
-    #             return "❌ Failed to initialize RAG service"
-            
-    #         # Process through RAG pipeline
-    #         logger.info(f"Processing document: {file_path}")
-    #         result = self.rag_service.process_uploaded_document(file_path)
-            
-    #         # Store processing status
-    #         self.processing_status[file_path] = result
-            
-    #         if result["status"] == "success":
-    #             return (f"✅ Successfully processed {result['file_name']}\n"
-    #                    f"📄 Pages: {result['document_count']}\n"
-    #                    f"🔪 Chunks: {result['chunk_count']}\n"
-    #                    f"📝 Ready for querying!")
-    #         else:
-    #             return f"❌ Error processing {file_path}: {result.get('error', 'Unknown error')}"
-                
-    #     except Exception as e:
-    #         error_msg = f"Error processing document: {str(e)}"
-    #         logger.error(error_msg)
-    #         return f"❌ {error_msg}"
-    
     def update_chunker_strategy(self, strategy: str) -> str:
         """
-        Update the chunking strategy.
+        Update the chunking strategy and reinitialize services.
         
         Args:
             strategy: New chunking strategy
@@ -222,7 +180,15 @@ class UIIntegrationService:
             Status message
         """
         try:
+            # Reinitialize RAG service with new strategy
             self._initialize_rag_service(strategy)
+            
+            # Reinitialize quiz generation service
+            self._initialize_quiz_generation_service()
+            
+            # Reinitialize agent service
+            self._initialize_agent_service()
+            
             return f"✅ Chunking strategy updated to: {strategy}"
         except Exception as e:
             error_msg = f"Error updating chunker strategy: {str(e)}"
@@ -248,54 +214,40 @@ class UIIntegrationService:
             logger.error(error_msg)
             return f"❌ {error_msg}"
     
-    def handle_chat_query(self, query: str, chat_history: List) -> Tuple[List, str]:
+    def handle_chat_query(self, query: str, chat_history: List) -> List:
         """
-        Handle chat queries and retrieve relevant documents.
+        Handle chat queries using Agent Service.
         
         Args:
             query: User query
             chat_history: Current chat history
-            
         Returns:
-            Tuple of (updated_chat_history, cleared_input)
+            List: Updated chat history
         """
         try:
             if not query or not query.strip():
-                return chat_history, ""
+                return chat_history
             
-            # Check if RAG service is ready
-            if not self.rag_service or not self.processing_status:
-                response = ("🤖 Xin chào! Để tôi có thể trả lời câu hỏi của bạn, "
-                           "vui lòng upload và xử lý tài liệu trước. "
-                           "Tôi sẽ phân tích tài liệu và trả lời dựa trên nội dung đó.")
-                chat_history.append((query, response))
-                return chat_history, ""
-            
-            # Ensure RAG service is properly initialized
-            if not self.rag_service:
-                self._initialize_rag_service()
+            # Check if agent service is ready
+            if not self.agent_service:
+                # Try to initialize if not ready
+                self._initialize_agent_service()
                 
-            # Double check initialization
-            if not self.rag_service:
-                response = "🤖 Xin lỗi, không thể khởi tạo RAG service"
-                chat_history.append((query, response))
-                return chat_history, ""
+                if not self.agent_service:
+                    error_response = "🤖 Dịch vụ AI chưa sẵn sàng. Vui lòng thử lại sau."
+                    chat_history.append((query, error_response))
+                    return chat_history
             
-            # Retrieve relevant documents and generate response
-            response = self.rag_service.generate_rag_response(query)
-            if response == "":
-                response = "🤖 Xin lỗi, đã có lỗi xảy ra khi xử lý câu hỏi"
-            else:
-                chat_history.append((query, response))
-
-            return chat_history, ""
+            # Use agent service to handle the chat
+            response, updated_history = self.agent_service.handle_chat_query(query, chat_history)
+            
+            return updated_history
             
         except Exception as e:
-            error_msg = f"Error processing query: {str(e)}"
+            error_msg = f"Error in chat query: {str(e)}"
             logger.error(error_msg)
-            response = f"🤖 Xin lỗi, đã có lỗi xảy ra khi xử lý câu hỏi: {error_msg}"
-            chat_history.append((query, response))
-            return chat_history, ""
+            chat_history.append((query, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
+            return chat_history
     
     def get_service_status(self) -> Dict[str, Any]:
         """
@@ -304,11 +256,12 @@ class UIIntegrationService:
         Returns:
             Service status information
         """
-        rag_status = self.rag_service.get_service_status() if self.rag_service else {}
-        
         return {
             "rag_service_initialized": self.rag_service is not None,
+            "doc_management_service_initialized": self.doc_management_service is not None,
+            "quiz_generation_service_initialized": self.quiz_generation_service is not None,
+            "agent_service_initialized": self.agent_service is not None,
             "files_loaded": len(self.current_files),
             "documents_processed": len(self.processing_status),
-            "rag_service_status": rag_status
+            "agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
