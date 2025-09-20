@@ -105,10 +105,21 @@ def on_chunker_change(chunker_value):
         return chunker_value
 
 def handle_chat_input(user_input, chat_history):
-    """Handle chat input and return response"""
+    """Handle chat input and return response. 
+    It receives the user input from the textbox and the current chat history, 
+    then returns the updated chat history and clears the input box.
+
+    Args:
+        user_input (str): The input text from the user.
+        chat_history (List[Tuple[str, str]]): The current chat history as a list of tuples.
+    Returns:
+        Tuple[List[Tuple[str, str]], ""]: Updated chat history and cleared input box.
+
+    """
+
     try:
-        updated_history, cleared_input = ui_service.handle_chat_query(user_input, chat_history)
-        return updated_history, cleared_input
+        updated_history = ui_service.handle_chat_query(user_input, chat_history)
+        return updated_history, ""
     except Exception as e:
         error_msg = f"Error in chat: {str(e)}"
         logger.error(error_msg)
