@@ -121,7 +121,7 @@ Bạn là một chuyên gia phân loại yêu cầu của người dùng.
 </ROLE>
 
 <OBJECTIVE>
-Phân tích yêu cầu của người dùng và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa, general_qa.
+Phân tích yêu cầu của người dùng và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa.
 </OBJECTIVE>
 
 <INPUT_SCHEMA>
