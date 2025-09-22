@@ -137,7 +137,7 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
-
+src/lecture9.pdf
 # Environments
 .env
 .envrc
@@ -194,6 +194,7 @@ cython_debug/
 
 # Ruff stuff:
 .ruff_cache/
+/model
 
 # PyPI configuration file
 .pypirc

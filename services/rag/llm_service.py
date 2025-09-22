@@ -6,7 +6,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.prompt_values import PromptValue
 from typing import Optional
 
-from config import ModelConstants
+from config.constants import ModelConstants
 from config.settings import get_settings
 
 class LLMService:
@@ -26,25 +26,29 @@ class LLMService:
         
 
     
-    def get_llm(self, llm_type: Optional[str], model_name: Optional[str] = None) -> BaseChatModel:
+    def get_llm(self, llm_type: Optional[str]= None, model_name: Optional[str] = None) -> BaseChatModel:
         """Factory method để tạo LLM phù hợp"""
         settings = get_settings()
 
         if llm_type is None:
-            llm_type = ModelConstants.DEFAULT_LLM_PROVIDER
+            llm_type = self.llm_type
 
         if llm_type.lower() == "nvidia":
             if settings.nvidia_api_key is None:
-                raise ValueError("NVIDA API KEY is not set")
-            else:
-                return get_nvidia_llm(api_key=settings.nvidia_api_key, 
-                                             model_name=model_name or ModelConstants.DEFAULT_MODELS['nvidia'])
+                raise ValueError("NVIDIA API KEY is not set")
+            return get_nvidia_llm(
+                api_key=settings.nvidia_api_key,
+                model_name=model_name or ModelConstants.DEFAULT_MODELS['nvidia'],
+            )
+
         elif llm_type.lower() == "google_gen_ai":
             if settings.google_api_key is None:
                 raise ValueError("GOOGLE GENAI API KEY is not set")
-            else:
-                return get_google_genai_llm(api_key=settings.google_api_key, 
-                                                   model_name=model_name or ModelConstants.DEFAULT_MODELS['google_gen_ai'])
+            return get_google_genai_llm(
+                api_key=settings.google_api_key,
+                model_name=model_name or ModelConstants.DEFAULT_MODELS['google_gen_ai'],  # ✅
+            )
+
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}")
         
@@ -72,11 +76,14 @@ def get_nvidia_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS
     )
     
 
-def get_google_genai_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS['google_gen_ai']) -> BaseChatModel:
+def get_google_genai_llm(
+    api_key: str,
+    model_name: str = ModelConstants.DEFAULT_MODELS['google_gen_ai']
+) -> BaseChatModel:
     """Khởi tạo Google LLM thông qua LangChain"""
     return ChatGoogleGenerativeAI(
-        model_name=model_name,
-        google_api_key=api_key,
-        streaming=True,
-        callbacks=[StreamingStdOutCallbackHandler()]
+        model=model_name, 
+        api_key=api_key,  
+        disable_streaming=False,
+        callbacks=[StreamingStdOutCallbackHandler()],
     )
