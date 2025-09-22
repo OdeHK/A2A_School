@@ -239,6 +239,15 @@ class DocumentManagementService:
         return self.repository.list_session_documents()
     
     
+    def get_document_id_dict(self) -> Dict[str, str]:
+        """
+        Get a dictionary mapping document IDs to file names for current session.
+        Returns:
+            Dictionary of document_id -> file_name
+        """
+        document_metadata_list = self.repository.list_session_documents()
+        return {doc.document_id: doc.file_name for doc in document_metadata_list}
+    
     def update_chunking_strategy(self, strategy_type: ChunkingStrategyType) -> None:
         """
         Update the chunking strategy.
