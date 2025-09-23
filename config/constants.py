@@ -29,7 +29,7 @@ class ModelConstants:
     EMBEDDING_MODELS = {
         "nvidia": "nvidia/llama-3.2-nemoretriever-300m-embed-v1",
         "google_gen_ai": "models/gemini-embedding-001",
-        "huggingface": "Alibaba-NLP/gte-multilingual-base2"
+        "huggingface": "Alibaba-NLP/gte-multilingual-base"
     }
     
     HUGGINGFACE_CACHE_DIR = "./.cache/huggingface"
@@ -38,6 +38,7 @@ class ModelConstants:
     MAX_CONTEXT_LENGTHS = {
         "openai/gpt-oss-20b": 128000
     }
+    
     
     # === Temperature ranges ===
     MIN_TEMPERATURE = 0.0
@@ -132,90 +133,77 @@ class FileConstants:
     MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB total
 
 
+# === Document Repository folder names ===
+class DocumentRepositoryConstants:
+    """Hằng số liên quan đến các folder trong DocumentRepository"""
+    BASE_DOCUMENTS_DIR = "session_data"
+    SESSIONS_DIR = "sessions"
+    TEMP_DIR = "temp"
+    RAW_FILES_DIR = "raw_files"
+    METADATA_DIR = "metadata"
+    TOC_DIR = "toc"
+    VECTOR_STORE_DIR = "vector_store"
+
+
 class AgentConstants:
     """Hằng số liên quan đến AI Agents"""
     
     # === Agent types ===
-    AGENT_TYPES = {
-        "main": "Main Teacher Agent",
-        "exam_creator": "Exam Creation Agent", 
-        "document_analyzer": "Document Analysis Agent",
-        "classroom_manager": "Classroom Management Agent",
-        "lesson_planner": "Lesson Planning Agent"
-    }
+    # AGENT_TYPES = {
+    #     "main": "Main Teacher Agent",
+    #     "exam_creator": "Exam Creation Agent", 
+    #     "document_analyzer": "Document Analysis Agent",
+    #     "classroom_manager": "Classroom Management Agent",
+    #     "lesson_planner": "Lesson Planning Agent"
+    # }
     
-    # === Agent capabilities ===
-    AGENT_CAPABILITIES = {
-        "exam_creator": [
-            "Tạo câu hỏi trắc nghiệm",
-            "Tạo câu hỏi tự luận", 
-            "Phân loại độ khó",
-            "Export đề thi ra Google Forms"
-        ],
-        "document_analyzer": [
-            "Tóm tắt tài liệu",
-            "Trích xuất điểm chính",
-            "Phân tích nội dung",
-            "So sánh tài liệu"
-        ],
-        "classroom_manager": [
-            "Quản lý Google Classroom",
-            "Tạo assignment",
-            "Theo dõi progress",
-            "Gửi thông báo"
-        ]
-    }
+    # # === Agent capabilities ===
+    # AGENT_CAPABILITIES = {
+    #     "exam_creator": [
+    #         "Tạo câu hỏi trắc nghiệm",
+    #         "Tạo câu hỏi tự luận", 
+    #         "Phân loại độ khó",
+    #         "Export đề thi ra Google Forms"
+    #     ],
+    #     "document_analyzer": [
+    #         "Tóm tắt tài liệu",
+    #         "Trích xuất điểm chính",
+    #         "Phân tích nội dung",
+    #         "So sánh tài liệu"
+    #     ],
+    #     "classroom_manager": [
+    #         "Quản lý Google Classroom",
+    #         "Tạo assignment",
+    #         "Theo dõi progress",
+    #         "Gửi thông báo"
+    #     ]
+    # }
     
-    # === Tool categories ===
-    TOOL_CATEGORIES = {
-        "document": "Document Processing Tools",
-        "google": "Google Services Tools", 
-        "exam": "Exam Creation Tools",
-        "analysis": "Analysis Tools",
-        "utility": "Utility Tools"
-    }
+    # # === Tool categories ===
+    # TOOL_CATEGORIES = {
+    #     "document": "Document Processing Tools",
+    #     "google": "Google Services Tools", 
+    #     "exam": "Exam Creation Tools",
+    #     "analysis": "Analysis Tools",
+    #     "utility": "Utility Tools"
+    # }
     
-    # === Default agent prompts ===
-    DEFAULT_SYSTEM_PROMPTS = {
-        "main": """Bạn là một trợ lý AI thông minh cho giáo viên. 
-        Bạn có thể giúp tạo đề thi, phân tích tài liệu, quản lý lớp học và hỗ trợ giảng dạy.
-        Hãy sử dụng các công cụ có sẵn để giúp đỡ giáo viên một cách hiệu quả nhất.""",
+    # # === Default agent prompts ===
+    # DEFAULT_SYSTEM_PROMPTS = {
+    #     "main": """Bạn là một trợ lý AI thông minh cho giáo viên. 
+    #     Bạn có thể giúp tạo đề thi, phân tích tài liệu, quản lý lớp học và hỗ trợ giảng dạy.
+    #     Hãy sử dụng các công cụ có sẵn để giúp đỡ giáo viên một cách hiệu quả nhất.""",
         
-        "exam_creator": """Bạn là chuyên gia tạo đề thi và câu hỏi.
-        Nhiệm vụ của bạn là tạo ra các câu hỏi chất lượng cao, phù hợp với nội dung học tập.""",
+    #     "exam_creator": """Bạn là chuyên gia tạo đề thi và câu hỏi.
+    #     Nhiệm vụ của bạn là tạo ra các câu hỏi chất lượng cao, phù hợp với nội dung học tập.""",
         
-        "document_analyzer": """Bạn là chuyên gia phân tích tài liệu giáo dục.
-        Hãy giúp giáo viên hiểu rõ nội dung, trích xuất thông tin quan trọng và tóm tắt hiệu quả."""
-    }
+    #     "document_analyzer": """Bạn là chuyên gia phân tích tài liệu giáo dục.
+    #     Hãy giúp giáo viên hiểu rõ nội dung, trích xuất thông tin quan trọng và tóm tắt hiệu quả."""
+    # }
 
 
 class DatabaseConstants:
     """Hằng số liên quan đến database và storage"""
-    
-    # === Database tables ===
-    TABLES = {
-        "sessions": "user_sessions",
-        "documents": "uploaded_documents", 
-        "conversations": "chat_conversations",
-        "agent_logs": "agent_execution_logs"
-    }
-    
-    # === Session states ===
-    SESSION_STATES = {
-        "active": "ACTIVE",
-        "inactive": "INACTIVE", 
-        "expired": "EXPIRED",
-        "error": "ERROR"
-    }
-    
-    # === Document processing states ===
-    DOCUMENT_STATES = {
-        "uploaded": "UPLOADED",
-        "processing": "PROCESSING",
-        "processed": "PROCESSED",
-        "failed": "FAILED",
-        "indexed": "INDEXED"
-    }
     
     # === Vector store configurations ===
     VECTOR_STORE_CONFIGS = {

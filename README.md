@@ -75,13 +75,24 @@ Sau khi chạy, mở browser và truy cập: `http://127.0.0.1:7860`
 
 ```
 services/
-├── rag_service.py              # Main RAG orchestrator
-├── ui_integration_service.py   # UI bridge service
-├── document_loader.py          # Document loading strategies
-├── document_chunker.py         # Document chunking strategies
-├── vector_service.py           # Vector store management
-├── embedding_service.py        # Embedding management
-└── llm_service.py             # LLM integration
+├── document_processing/        # 📄 Document Processing Domain
+│   ├── __init__.py
+│   ├── document_loader.py     # Document loading strategies
+│   ├── document_chunker.py    # Document chunking strategies
+│   ├── document_management_service.py  # Document workflow orchestration
+│   ├── document_repository.py # Document storage & metadata
+│   └── toc_extractor.py       # Table of contents extraction
+│
+├── rag/                       # 🤖 RAG Operations Domain
+│   ├── __init__.py
+│   ├── rag_service.py         # Main RAG orchestrator
+│   ├── embedding_service.py   # Embedding management & strategies
+│   ├── vector_service.py      # Vector store management
+│   └── llm_service.py         # LLM integration
+│
+├── models.py                  # 📝 Shared data models
+├── quiz_generation.py         # 🧩 Quiz generation service
+└── ui_integration_service.py  # 🎮 UI bridge service
 
 ui/
 ├── app.py                     # Main Gradio interface

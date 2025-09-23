@@ -1,14 +1,14 @@
-from services.document_loader import DocumentLoader, DocumentType
-from services.document_chunker import DocumentChunker, ChunkingStrategyType
-from services.vector_service import VectorService
-from services.llm_service import LLMService
+from services.document_processing.document_loader import DocumentLoader, DocumentType
+from services.document_processing.document_chunker import DocumentChunker, ChunkingStrategyType
+from .vector_service import VectorService
+from .llm_service import LLMService
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import os
 import logging
 from langchain.schema.document import Document
 from langchain.prompts import ChatPromptTemplate
-from services.embedding_service import EmbeddingType
+from .embedding_service import EmbeddingType
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class RagService:
         chunker: Optional[DocumentChunker] = None, 
         llm_service: Optional[LLMService] = None,
         vector_service: Optional[VectorService] = None,
-        embedding_type: EmbeddingType = EmbeddingType.GOOGLE_GEN_AI
+        embedding_type: EmbeddingType = EmbeddingType.HUGGINGFACE
     ) -> None:
         """
         Initialize RAG service with optional components.
@@ -62,73 +62,21 @@ class RagService:
             llm_service = LLMService()
         self.llm_service = llm_service
     
-    def process_uploaded_document(self, file_path: str) -> Dict[str, Any]:
+
+    def add_document_chunks_to_vector_store(self, chunks: List[Document]) -> None:
         """
-        Process an uploaded document through the complete RAG pipeline.
+        Add document chunks to vector store.
         
         Args:
-            file_path: Path to the uploaded document
-            
-        Returns:
-            Dict containing processing results and metadata
-            
-        Raises:
-            ValueError: If file doesn't exist or processing fails
+            chunks: List of document chunks to add
         """
         try:
-            # Validate file existence
-            if not os.path.exists(file_path):
-                raise ValueError(f'File does not exist: {file_path}')
-            
-            file_path_obj = Path(file_path)
-            logger.info(f"Processing document: {file_path_obj.name}")
-            
-            # Load documents
-            logger.info("Loading documents...")
-            docs = self.loader.lazy_load(file_path)
-            
-            # Convert iterator to list for validation
-            docs_list = list(docs)
-            if not docs_list:
-                raise ValueError("No documents were loaded from the file")
-            
-            logger.info(f"Loaded {len(docs_list)} document pages")
-            
-            # Chunk documents (convert back to iterator)
-            logger.info("Chunking documents...")
-            chunks = self.chunker.chunk(iter(docs_list))
-            
-            if not chunks:
-                raise ValueError("No chunks were created from the documents")
-                
-            logger.info(f"Created {len(chunks)} chunks")
-            
-            # Add to vector store
-            logger.info("Adding documents to vector store...")
+            logger.info(f"Adding {len(chunks)} chunks to vector store")
             self.vector_service.add_documents(chunks)
-            
-            # Return processing summary
-            result = {
-                "status": "success",
-                "file_name": file_path_obj.name,
-                "file_path": str(file_path_obj),
-                "document_count": len(docs_list),
-                "chunk_count": len(chunks),
-                "message": f"Successfully processed {file_path_obj.name} with {len(chunks)} chunks"
-            }
-            
-            logger.info(f"Successfully processed document: {result}")
-            return result
-            
+            logger.info("Successfully added chunks to vector store")
         except Exception as e:
-            error_msg = f"Error processing document {file_path}: {str(e)}"
-            logger.error(error_msg)
-            return {
-                "status": "error", 
-                "file_path": file_path,
-                "error": str(e),
-                "message": error_msg
-            }
+            logger.error(f"Error adding chunks to vector store: {str(e)}")
+            raise
 
     def retrieve_documents(
         self, 

@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Import the new implementation
-from services.document_chunker import (
+from services.document_processing.document_chunker import (
     DocumentChunker,
     ChunkingStrategyType,
     create_recursive_chunker,
