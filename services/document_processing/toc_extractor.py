@@ -1,310 +1,359 @@
 """
-Table of Contents Extractor service.
-Handles extraction of ToC from documents using both library methods and LLM fallback.
+Enhanced Table of Contents Extractor service.
+Generates separate TOC structure and content files with ID mapping.
+Uses TextRank summarization for intelligent content extraction.
 """
 
 import logging
-import pymupdf
-from typing import List, Optional, Dict, Any
+import os
+import json
+import uuid
+from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
-
 from datetime import datetime
-from langchain.schema.document import Document
-from langchain.prompts import ChatPromptTemplate
-from pydantic import BaseModel
+from dataclasses import dataclass, asdict        
 
-from services.models import TableOfContents, TocSection
-from services.rag.llm_service import LLMService
+# Import from existing TOC system
+from services.TOC_generator import TOCGenerator, BookmarkNode, TaskType, TOCStrategyFactory
 
 logger = logging.getLogger(__name__)
 
 
-class TocExtractionResult(BaseModel):
-    """Result of ToC extraction attempt"""
-    success: bool
-    method: str  # "library" or "llm"
-    sections: List[TocSection] = []
-    raw_text: Optional[str] = None
-    error: Optional[str] = None
+# === DATA MODELS ===
+@dataclass
+class TOCSection:
+    """TOC section with nested children structure"""
+    section_id: str
+    section_title: str
+    parent_section_id: Optional[str]
+    level: int
+    page_number: Optional[int]
+    children: List['TOCSection']
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'section_id': self.section_id,
+            'section_title': self.section_title,
+            'parent_section_id': self.parent_section_id,
+            'level': self.level,
+            'page_number': self.page_number,
+            'children': [child.to_dict() for child in self.children]
+        }
+
+@dataclass
+class TOCStructure:
+    """Complete TOC structure for a document"""
+    document_id: str
+    extraction_date: str
+    sections: List[TOCSection]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'document_id': self.document_id,
+            'extraction_date': self.extraction_date,
+            'sections': [section.to_dict() for section in self.sections]
+        }
+
+@dataclass  
+class ContentItem:
+    """Content item with corresponding TOC ID"""
+    id: str                    # Same ID as TOC item
+    title: str                 # Section title (for reference)
+    content: str               # Generated content (TextRank summary/extract)
+    page_number: Optional[int] # Page number for reference
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+@dataclass
+class ContentData:
+    """Complete content data for a document"""
+    document_id: str
+    extraction_date: str
+    content: List[ContentItem]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'document_id': self.document_id,
+            'extraction_date': self.extraction_date,
+            'content': [item.to_dict() for item in self.content]
+        }
+
+@dataclass
+class TOCExtractionResult:
+    """Complete extraction result with both structure and content"""
+    pdf_path: str
+    toc_structure: TOCStructure
+    content_data: ContentData
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "pdf_path": self.pdf_path,
+            "toc_structure": self.toc_structure.to_dict(),
+            "content_data": self.content_data.to_dict()
+        }
 
 
-class TableOfContentsExtractor:
+class TOCExtractor:
     """
-    Service for extracting Table of Contents from documents.
-    Uses library-based extraction first, falls back to LLM if needed.
+    TOC Extractor that generates separate TOC and Content files.
+    
+    Features:
+    - Extracts TOC structure with unique IDs
+    - Generates content using TextRank summarization
+    - Creates separate JSON files for structure and content
+    - Maintains ID mapping between TOC and content
+    - Supports multiple extraction strategies
     """
     
-    def __init__(self, llm_service: Optional[LLMService] = None):
+    def __init__(self, 
+                 content_strategy: str = "textrank_extract",
+                 embedding_model: str = "Alibaba-NLP/gte-multilingual-base",
+                 cache_folder: str = "./model"):
         """
-        Initialize ToC extractor.
+        Initialize TOC Extractor.
         
         Args:
-            llm_service: LLM service for fallback extraction
+            content_strategy: Strategy for content generation
+            embedding_model: Model for TextRank embeddings  
+            cache_folder: Cache folder for models
         """
-        #self.llm_service = llm_service or LLMService(llm_type="google_gen_ai")
+        self.content_strategy = content_strategy
+        self.embedding_model = embedding_model
+        self.cache_folder = cache_folder
+        
+        # Configuration for TextRank strategy
+        self.toc_config = {
+            "embedding_model": embedding_model,
+            "cache_folder": cache_folder
+        }
+        
+        logger.info(f"TOC Extractor initialized:")
+        logger.info(f"  - Content Strategy: {content_strategy}")
+        logger.info(f"  - Embedding Model: {embedding_model}")
+        logger.info(f"  - Mode: Separate TOC + Content files with ID mapping")
     
-    def extract_table_of_contents(self, file_path: str, document_id: str) -> TableOfContents:
+    def extract_toc_and_content(self, pdf_path: str, document_id: Optional[str] = None) -> TOCExtractionResult:
         """
-        Extract table of contents from document.
-        Tries library method first, falls back to LLM.
+        Main method to extract both TOC structure and content.
         
         Args:
-            file_path: Path to document file
-            document_id: Document identifier
+            pdf_path: Path to PDF file
+            document_id: Optional document ID (auto-generated if not provided)
             
         Returns:
-            TableOfContents object
+            TOCExtractionResult containing both structure and content
         """
-        logger.info(f"Extracting ToC from {file_path}")
+        logger.info(f"Starting TOC extraction for: {pdf_path}")
         
-        # Try library-based extraction first
-        library_result = self.extract_toc_with_library(file_path)
+        # Generate document ID if not provided
+        if not document_id:
+            pdf_name = Path(pdf_path).stem
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            document_id = f"{timestamp}"
         
-        if library_result.success and library_result.sections:
-            logger.info(f"Successfully extracted ToC using library method: {len(library_result.sections)} sections")
-            return TableOfContents(
-                document_id=document_id,
-                extraction_method="library",
-                extraction_date=datetime.now(),
-                sections=library_result.sections,
-                raw_text=library_result.raw_text
-            )
+        logger.info(f"Document ID: {document_id}")
         
-        # Fall back to LLM extraction
-        logger.info("Library extraction failed, trying LLM method")
-
-        # TODO: Implement LLM table of contents extraction here
-        # llm_result = self._extract_toc_with_llm(file_path)
+        # Validate PDF file
+        if not Path(pdf_path).exists():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
         
-        # if llm_result.success:
-        #     logger.info(f"Successfully extracted ToC using LLM method: {len(llm_result.sections)} sections")
-        #     return TableOfContents(
-        #         document_id=document_id,
-        #         extraction_method="llm",
-        #         extraction_date=datetime.now(),
-        #         sections=llm_result.sections,
-        #         raw_text=llm_result.raw_text
-        #     )
+        # STEP 1: Extract TOC structure using TOCGenerator
+        toc_generator = self._create_toc_generator(pdf_path)
+        bookmark_tree = toc_generator.generate_toc()
         
-        # # Return empty ToC if both methods fail
-        # logger.warning(f"Failed to extract ToC from {file_path}")
-        return TableOfContents(
+        # STEP 2: Convert to structured format with unique IDs
+        toc_sections = self._convert_to_toc_sections(bookmark_tree)
+        toc_structure = TOCStructure(
             document_id=document_id,
-            extraction_method="failed",
-            extraction_date=datetime.now(),
-            sections=[],
-            raw_text=None
+            extraction_date=datetime.now().isoformat(),
+            sections=toc_sections
+        )
+        
+        # STEP 3: Generate content using TextRank for each section
+        content_items = self._generate_content_items(toc_sections, toc_generator)
+        content_data = ContentData(
+            document_id=document_id,
+            extraction_date=datetime.now().isoformat(),
+            content=content_items
+        )
+        
+        # STEP 4: Create final result
+        result = TOCExtractionResult(
+            pdf_path=pdf_path,
+            toc_structure=toc_structure,
+            content_data=content_data
+        )
+        
+        # Store document_id for export usage
+        result.document_id = document_id
+        
+        logger.info(f"Extraction completed: {len(toc_structure.sections)} sections, {len(content_data.content)} content items")
+        return result
+    
+    def _create_toc_generator(self, pdf_path: str) -> TOCGenerator:
+        """Create TOC generator with appropriate strategy."""
+        task_type = TaskType.HYBRID_SUMMARIZE if self.content_strategy == "textrank_extract" else TaskType.SUMMARIZE
+        
+        return TOCGenerator.create_with_config(
+            pdf_path=pdf_path,
+            task_type=task_type,
+            toc_config=self.toc_config
         )
     
-    def extract_toc_with_library(self, file_path: str) -> TocExtractionResult:
-        """
-        Extract ToC using PyMuPDF library.
-        
-        Args:
-            file_path: Path to PDF file
-            
-        Returns:
-            TocExtractionResult
-        """
-        try:
-            doc = pymupdf.open(file_path)
-            toc = doc.get_toc()
-            doc.close()
-            
-            if not toc:
-                return TocExtractionResult(
-                    success=False,
-                    method="library",
-                    error="No table of contents found in document"
-                )
-
-            # Convert PyMuPDF ToC format to our format
-            sections = self._convert_pymupdf_toc(toc)
-            
-            return TocExtractionResult(
-                success=True,
-                method="library",
-                sections=sections,
-                raw_text=str(toc)
-            )
-            
-        except Exception as e:
-            logger.error(f"Library ToC extraction failed: {str(e)}")
-            return TocExtractionResult(
-                success=False,
-                method="library",
-                error=str(e)
-            )
     
-    def _convert_pymupdf_toc(self, toc_data: List) -> List[TocSection]:
+    def _convert_to_toc_sections(self, bookmark_tree: List[BookmarkNode]) -> List[TOCSection]:
         """
-        Convert PyMuPDF ToC format to TocSection objects.
+        Convert BookmarkNode tree to nested TOC sections structure.
         
         Args:
-            toc_data: ToC data from PyMuPDF ([level, title, page_num])
+            bookmark_tree: BookmarkNode tree from TOCGenerator
             
         Returns:
-            List of TocSection objects
+            List of TOCSection with nested children
         """
-        sections = []
-        section_stack = {}  # Track parent sections by level
-
-        for section_id, (level, title, page_num) in enumerate(toc_data):
-
-            # Determine parent section
-            parent_section_id = None
-            if level > 1:
-                # Find parent at level-1
-                for parent_level in range(level - 1, 0, -1):
-                    if parent_level in section_stack:
-                        parent_section_id = section_stack[parent_level]
-                        break
+        def process_node(node: BookmarkNode, level: int = 1, parent_id: Optional[str] = None) -> TOCSection:
+            """Recursively process nodes and create nested structure."""
+            # Generate unique ID
+            node_id = f"toc_{uuid.uuid4().hex[:8]}"
             
-            section = TocSection(
-                section_id=f"{section_id + 1}",
-                section_title=title.strip(),
-                parent_section_id=parent_section_id,
+            # Process children recursively
+            children = []
+            for child in node.children:
+                child_section = process_node(child, level + 1, node_id)
+                children.append(child_section)
+            
+            # Create TOC section
+            section = TOCSection(
+                section_id=node_id,
+                section_title=node.title,
+                parent_section_id=parent_id,
                 level=level,
-                page_number=page_num if page_num > 0 else None
+                page_number=node.page_number if hasattr(node, 'page_number') else None,
+                children=children
             )
-
-
-            # If the last section is a parent (its level is less than current level), add as its child.
-            if sections and sections[-1].level < level:
-                current_section = sections[-1]
-                # Traverse down to the correct parent at level-1
-                while current_section.children and current_section.level < level - 1:
-                    current_section = current_section.children[-1]
-                current_section.children.append(section)
-            else:
-                # Otherwise, add as a top-level section
-                sections.append(section)
-
-            section_stack[level] = section.section_id
-
-            # Clear deeper levels
-            keys_to_remove = [k for k in section_stack.keys() if k > level]
-            for k in keys_to_remove:
-                del section_stack[k]
+            
+            return section
+        
+        # Process root nodes
+        sections = []
+        for root_node in bookmark_tree:
+            section = process_node(root_node, level=1, parent_id=None)
+            sections.append(section)
         
         return sections
     
-    def _extract_toc_with_llm(self, file_path: str) -> TocExtractionResult:
+    def _generate_content_items(self, toc_sections: List[TOCSection], 
+                               toc_generator: TOCGenerator) -> List[ContentItem]:
         """
-        Extract ToC using LLM by analyzing document content.
+        Generate content for each TOC section using TextRank.
         
         Args:
-            file_path: Path to document file
+            toc_sections: TOC sections with nested structure
+            toc_generator: TOCGenerator instance with processed content
             
         Returns:
-            TocExtractionResult
+            List of ContentItem with generated content
         """
-        try:
-            # # Load first few pages to analyze for ToC
-            # doc = pymupdf.open(file_path)
+        content_items = []
+        
+        # Create a mapping from title to BookmarkNode for content lookup
+        title_to_node = self._create_title_mapping(toc_generator.bookmark_tree)
+        
+        def process_section(section: TOCSection):
+            """Recursively process sections and generate content."""
+            try:
+                # Find corresponding bookmark node
+                bookmark_node = title_to_node.get(section.section_title)
+                
+                if bookmark_node and bookmark_node.content:
+                    # Extract content information
+                    content = bookmark_node.content
+                    
+                    content_item = ContentItem(
+                        id=section.section_id,  # Same ID as TOC item for mapping
+                        title=section.section_title,
+                        content=content,
+                        page_number=section.page_number
+                    )
+                    
+                    content_items.append(content_item)
+                    logger.debug(f"Generated content for: {section.section_title}")
+                    
+                else:
+                    # Create placeholder for sections without content
+                    content_item = ContentItem(
+                        id=section.section_id,
+                        title=section.section_title,
+                        content=f"Nội dung cho '{section.section_title}' chưa được tạo.",
+                        page_number=section.page_number
+                    )
+                    content_items.append(content_item)
+                    logger.debug(f"Created placeholder for: {section.section_title}")
+                    
+            except Exception as e:
+                logger.error(f"Error generating content for {section.section_title}: {e}")
+                # Create error placeholder
+                content_item = ContentItem(
+                    id=section.section_id,
+                    title=section.section_title, 
+                    content=f"Lỗi khi tạo nội dung: {str(e)}",
+                    page_number=section.page_number
+                )
+                content_items.append(content_item)
             
-            # # Extract text from first 10 pages (typical ToC location)
-            # doc_text = doc.get_text("text")
-            
-            # doc.close()
-            
-            # # Use LLM to extract ToC structure
-            # sections = self._analyze_toc_with_llm(toc_text)
-            
-            return TocExtractionResult(
-                success=len(sections) > 0,
-                method="llm",
-                sections=sections,
-                raw_text=toc_text[:2000]  # Store first part of text
-            )
-            
-        except Exception as e:
-            logger.error(f"LLM ToC extraction failed: {str(e)}")
-            return TocExtractionResult(
-                success=False,
-                method="llm",
-                error=str(e)
-            )
+            # Process children
+            for child in section.children:
+                process_section(child)
+        
+        # Process all root sections
+        for section in toc_sections:
+            process_section(section)
+        
+        logger.info(f"Generated content for {len(content_items)} sections")
+        return content_items
     
-    def _analyze_toc_with_llm(self, document_text: str) -> List[TocSection]:
+    def _generate_document_content(self, content_data: List[ContentItem]) -> str:
         """
-        Use LLM to analyze document text and extract ToC structure.
+        Generate combined content from all sections.
         
         Args:
-            document_text: Text content from document pages
+            content_data: List of individual content items
             
         Returns:
-            List of TocSection objects
+            Combined content string
         """
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", self._get_toc_extraction_system_prompt()),
-            ("human", self._get_toc_extraction_user_prompt())
-        ])
+        combined_content = []
         
-        try:
-            # prompt = prompt_template.invoke({
-            #     "document_text": document_text[:8000]  # Limit text size
-            # })
-            
-            # response = self.llm_service.invoke(prompt)
-            # response_text = getattr(response, 'content', str(response))
-            
-            # Parse LLM response to extract ToC structure
-            return self._parse_llm_toc_response(response_text)
-            
-        except Exception as e:
-            logger.error(f"Error in LLM ToC analysis: {str(e)}")
-            return []
+        for item in content_data:
+            # Skip placeholder and error content
+            if (not item.content.startswith("Nội dung cho") and 
+                not item.content.startswith("Lỗi khi")):
+                
+                # Add section header and content
+                section_header = f"\n=== {item.title} ===\n"
+                combined_content.append(section_header)
+                combined_content.append(item.content)
+                combined_content.append("\n")
+        
+        if combined_content:
+            result = "".join(combined_content).strip()
+            logger.debug(f"Generated combined document content: {len(result)} characters")
+            return result
+        else:
+            return "Không có nội dung hợp lệ để tổng hợp."
     
-    def _parse_llm_toc_response(self, response_text: str) -> List[TocSection]:
-        """
-        Parse LLM response to extract ToC sections.
+    def _create_title_mapping(self, bookmark_tree: List[BookmarkNode]) -> Dict[str, BookmarkNode]:
+        """Create mapping from title to BookmarkNode for content lookup."""
+        mapping = {}
         
-        Args:
-            response_text: LLM response text
-            
-        Returns:
-            List of TocSection objects
-        """
-        # TODO: Implement parsing logic
-        return sections
+        def add_to_mapping(node: BookmarkNode):
+            mapping[node.title] = node
+            for child in node.children:
+                add_to_mapping(child)
+        
+        for root in bookmark_tree:
+            add_to_mapping(root)
+        
+        return mapping
     
-
-    @staticmethod
-    def _get_toc_extraction_system_prompt() -> str:
-        """System prompt for ToC extraction."""
-        return """You are an expert at analyzing document structure and extracting table of contents information.
-        Your task is to identify and extract the table of contents structure from the provided document text.
-        
-        Focus on:
-        1. Identifying chapter/section headings
-        2. Determining hierarchical structure
-        3. Finding page numbers when available
-        4. Maintaining proper formatting
-        
-        Respond with a clean, structured list of sections in the format:
-        Chapter/Section Number. Title ... Page Number
-        
-        If no clear table of contents is found, extract the main headings and structure from the document."""
-    
-    @staticmethod
-    def _get_toc_extraction_user_prompt() -> str:
-        """User prompt for ToC extraction."""
-        return """Please analyze the following document text and extract the table of contents structure.
-        Look for chapter headings, section titles, and their hierarchical organization.
-        
-        Document text:
-        {document_text}
-        
-        Please extract and format the table of contents structure."""
-
-
-
-
-if __name__ == "__main__":
-    #logging.basicConfig(level=logging.INFO)
-    extractor = TableOfContentsExtractor()
-    example_file = "C:\\Users\\likgn\\Repository\\RAG\\example_data\\operation_management.pdf"  
-    toc = extractor.extract_table_of_contents(example_file, "doc-001")
-    print("\n\n")
-    print(toc.sections)
