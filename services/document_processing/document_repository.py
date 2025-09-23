@@ -18,7 +18,7 @@ from services.models import (
     SessionMetadata, 
     ProcessingStatus
 )
-from config.constants import DocumentRepositoryConstants
+from config.constants import DocumentRepositoryConstants  
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +28,94 @@ class DocumentRepository:
     Session-based document repository using JSON storage.
     Each session gets its own folder with organized subdirectories.
     """
-    
+
     def __init__(self, base_documents_dir: str = DocumentRepositoryConstants.BASE_DOCUMENTS_DIR):
         """
         Initialize repository with base documents directory.
-        
+
         Args:
             base_documents_dir: Base directory for all document storage
         """
         self.base_dir = Path(base_documents_dir)
         self.sessions_dir = self.base_dir / DocumentRepositoryConstants.SESSIONS_DIR
         self.temp_dir = self.base_dir / DocumentRepositoryConstants.TEMP_DIR
-        
+
         # Create base directories if they don't exist
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.current_session_id: Optional[str] = None
         self.current_session_dir: Optional[Path] = None
+
+    def create_new_session(self) -> str:
+        """
+        Create a new session with unique ID and directory structure.
+
+        Returns:
+            Session ID
+        """
+        logger.info("Creating new session")
+
+        # Generate session ID with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_id = f"session_{timestamp}_{uuid.uuid4().hex[:8]}"
+
+        # Create session directory structure
+        session_dir = self.sessions_dir / session_id
+        session_dir.mkdir(exist_ok=True)
+
+        # Create subdirectories
+        (session_dir / DocumentRepositoryConstants.RAW_FILES_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.METADATA_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.TOC_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.CONTENT_DIR).mkdir(exist_ok=True)  # Thêm thư mục content
+        (session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR).mkdir(exist_ok=True)  # Thêm thư mục document library
+
+        # Create session metadata
+        session_metadata = SessionMetadata(
+            session_id=session_id,
+            created_date=datetime.now(),
+            last_accessed=datetime.now(),
+            documents=[],
+            vector_store_path=str(session_dir / DocumentRepositoryConstants.VECTOR_STORE_DIR)
+        )
+        
+        # Save session metadata
+        session_metadata_file = session_dir / "session_metadata.json"
+        with open(session_metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(session_metadata.model_dump(), f, indent=2, ensure_ascii=False, default=str)
+        
+        logger.info(f"Created new session: {session_id}")
+        return session_id
+
+    def save_content_data(self, document_id: str, content_data: Dict[str, Any]) -> None:
+        """
+        Save content data from TOC extractor.
+        
+        Args:
+            document_id: Document ID
+            content_data: Content data dict from TOCExtractionResult
+        """
+        session_dir = self._ensure_session()
+        content_file = session_dir / DocumentRepositoryConstants.CONTENT_DIR / f"{document_id}_content.json"
+        
+        # Save content data directly without document_id as key
+        with open(content_file, 'w', encoding='utf-8') as f:
+            json.dump(content_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved content data for document {document_id}")
+
+    def get_current_session_id(self) -> Optional[str]:
+        """Get current session ID."""
+        return self.current_session_id
+
+    def _ensure_session(self) -> Path:
+        """Ensure current session exists, create new one if needed."""
+        if self.current_session_dir is None:
+            self.create_new_session()
+        # At this point, self.current_session_dir must not be None
+        assert self.current_session_dir is not None, "Session directory should not be None after ensure."
+        return self.current_session_dir
     
     def create_new_session(self) -> str:
         """
@@ -68,6 +138,8 @@ class DocumentRepository:
         (session_dir / DocumentRepositoryConstants.RAW_FILES_DIR).mkdir(exist_ok=True)
         (session_dir / DocumentRepositoryConstants.METADATA_DIR).mkdir(exist_ok=True)
         (session_dir / DocumentRepositoryConstants.TOC_DIR).mkdir(exist_ok=True)
+        (session_dir / DocumentRepositoryConstants.CONTENT_DIR).mkdir(exist_ok=True)  # Thêm thư mục content
+        (session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR).mkdir(exist_ok=True)  # Thêm thư mục document library
         
         # Create session metadata
         session_metadata = SessionMetadata(
@@ -373,3 +445,216 @@ class DocumentRepository:
         
         except Exception as e:
             logger.error(f"Error updating session with document {document_id}: {str(e)}")
+    
+    def get_content_data(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get content data by document ID.
+        
+        Args:
+            document_id: Document ID
+            
+        Returns:
+            List of content items or None if not found
+        """
+        if self.current_session_dir is None:
+            return None
+        
+        content_file = self.current_session_dir / DocumentRepositoryConstants.CONTENT_DIR / f"{document_id}_content.json"
+        
+        if not content_file.exists():
+            return None
+        
+        try:
+            with open(content_file, 'r', encoding='utf-8') as f:
+                content_data = json.load(f)
+            
+            # Return content data directly
+            return content_data
+        
+        except Exception as e:
+            logger.error(f"Error loading content data for {document_id}: {str(e)}")
+            return None
+    
+    def save_toc_structure_data(self, document_id: str, toc_structure: Dict[str, Any]) -> None:
+        """
+        Save TOC structure data to JSON file in session.
+        
+        Args:
+            document_id: Document ID  
+            toc_structure: TOC structure dict from TOCExtractionResult
+        """
+        session_dir = self._ensure_session()
+        toc_structure_file = session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
+        
+        # Save TOC structure directly without document_id as key
+        with open(toc_structure_file, 'w', encoding='utf-8') as f:
+            json.dump(toc_structure, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved TOC structure data for document {document_id}")
+    
+    def get_toc_structure_data(self, document_id: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get TOC structure data by document ID.
+        
+        Args:
+            document_id: Document ID
+            
+        Returns:
+            TOC structure list or None if not found
+        """
+        if self.current_session_dir is None:
+            return None
+        
+        toc_structure_file = self.current_session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
+        
+        if not toc_structure_file.exists():
+            return None
+        
+        try:
+            with open(toc_structure_file, 'r', encoding='utf-8') as f:
+                toc_data = json.load(f)
+            
+            # Return sections directly from the structure
+            if 'sections' in toc_data:
+                return toc_data['sections']
+            return None
+        
+        except Exception as e:
+            logger.error(f"Error loading TOC structure data for {document_id}: {str(e)}")
+            return None
+
+    def save_document_library(self, document_library: Dict[str, Dict[str, Any]]) -> None:
+        """
+        Save complete document library to JSON file in session.
+        
+        Args:
+            document_library: Dictionary with document_id as key and document info as value
+        """
+        session_dir = self._ensure_session()
+        library_file = session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR / "document_library.json"
+        
+        with open(library_file, 'w', encoding='utf-8') as f:
+            json.dump(document_library, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved document library with {len(document_library)} documents")
+
+    def get_document_library(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get complete document library from current session.
+        
+        Returns:
+            Dictionary with document_id as key and document info as value, or empty dict if not found
+        """
+        if self.current_session_dir is None:
+            return {}
+        
+        library_file = self.current_session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR / "document_library.json"
+        
+        if not library_file.exists():
+            return {}
+        
+        try:
+            with open(library_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        
+        except Exception as e:
+            logger.error(f"Error loading document library: {str(e)}")
+            return {}
+    
+    def add_document_to_library(self, document_id: str, name: str, path: str, title: List[str]) -> None:
+        """
+        Add or update a document in the library.
+        
+        Args:
+            document_id: Unique document identifier
+            name: Document name
+            path: Document file path
+            title: List of document titles/bookmarks
+        """
+        # Load existing library
+        document_library = self.get_document_library()
+        
+        # Add/update document with name as key, without document_id and path
+        document_library[name] = {
+            'name': name,
+            'title': title
+        }
+        
+        # Save updated library
+        self.save_document_library(document_library)
+        
+        logger.info(f"Added document {name} to library")
+    
+    def remove_document_from_library(self, name: str) -> bool:
+        """
+        Remove a document from the library.
+        
+        Args:
+            name: Document name to remove
+            
+        Returns:
+            True if removed, False if not found
+        """
+        # Load existing library
+        document_library = self.get_document_library()
+        
+        if name in document_library:
+            del document_library[name]
+            self.save_document_library(document_library)
+            logger.info(f"Removed document {name} from library")
+            return True
+        
+        logger.warning(f"Document {name} not found in library")
+        return False
+
+    def get_document_from_library(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get specific document from library.
+        
+        Args:
+            name: Document name
+            
+        Returns:
+            Document information or None if not found
+        """
+        document_library = self.get_document_library()
+        return document_library.get(name)
+    
+    def list_all_documents_in_library(self) -> Dict[str, Dict[str, Any]]:
+        """
+        List all documents in the library across the session.
+        
+        Returns:
+            Dictionary with document_id as key and document info as value
+        """
+        if self.current_session_dir is None:
+            return {}
+        
+        library_dir = self.current_session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR
+        
+        if not library_dir.exists():
+            return {}
+        
+        all_documents = {}
+        
+        # Scan all *_library.json files
+        for library_file in library_dir.glob("*_library.json"):
+            try:
+                with open(library_file, 'r', encoding='utf-8') as f:
+                    doc_data = json.load(f)
+                    
+                # Extract document_id from filename or data
+                if 'document_id' in doc_data:
+                    doc_id = doc_data['document_id']
+                    all_documents[doc_id] = doc_data
+                else:
+                    # Fallback: extract from filename
+                    doc_id = library_file.stem.replace('_library', '')
+                    doc_data['document_id'] = doc_id
+                    all_documents[doc_id] = doc_data
+                    
+            except Exception as e:
+                logger.error(f"Error loading library file {library_file}: {str(e)}")
+                continue
+        
+        return all_documents
