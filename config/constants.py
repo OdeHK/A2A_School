@@ -142,6 +142,8 @@ class DocumentRepositoryConstants:
     RAW_FILES_DIR = "raw_files"
     METADATA_DIR = "metadata"
     TOC_DIR = "toc"
+    CONTENT_DIR = "content"  # Thêm thư mục cho content data từ toc_extractor
+    DOCUMENT_LIBRARY_DIR = "document_library"  # Thêm thư mục cho document library
     VECTOR_STORE_DIR = "vector_store"
 
 
