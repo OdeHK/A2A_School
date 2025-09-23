@@ -11,7 +11,7 @@ from services.quiz_generation import QuizGenerationService
 from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
-from services.agent.agent_service import AgentService
+from services.agent.agent_service_old import AgentService
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ class UIIntegrationService:
         self.agent_service: Optional[AgentService] = None
         self.current_files: List[str] = []
         self.processing_status: Dict[str, Any] = {}
+        self.selected_document: Optional[str] = None  # Track selected document filename
+        self.selected_document_id: Optional[str] = None  # Track selected document ID
         
         # Initialize services in correct order
         self._initialize_rag_service()
@@ -239,6 +241,7 @@ class UIIntegrationService:
                     return chat_history
             
             # Use agent service to handle the chat
+            # TODO: Pass selected_document_id when agent_service is updated to support it
             response, updated_history = self.agent_service.handle_chat_query(query, chat_history)
             
             return updated_history
@@ -248,6 +251,70 @@ class UIIntegrationService:
             logger.error(error_msg)
             chat_history.append((query, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
             return chat_history
+    
+    def set_selected_document(self, selected_filename: str) -> str:
+        """
+        Set the selected document and convert filename to document_id.
+        
+        Args:
+            selected_filename: The filename selected by user from UI
+            
+        Returns:
+            Status message
+        """
+        try:
+            if not selected_filename or not selected_filename.strip():
+                self.selected_document = None
+                self.selected_document_id = None
+                return "Không có tài liệu nào được chọn"
+            
+            # Store selected filename
+            self.selected_document = selected_filename
+            
+            # Convert filename to document_id using document management service
+            if self.doc_management_service:
+                document_id_dict = self.doc_management_service.get_document_id_dict()
+                
+                # Find document_id by matching filename
+                selected_document_id = None
+                for doc_id, filename in document_id_dict.items():
+                    if filename == selected_filename:
+                        selected_document_id = doc_id
+                        break
+                
+                if selected_document_id:
+                    self.selected_document_id = selected_document_id
+                    logger.info(f"Selected document: {selected_filename} -> document_id: {selected_document_id}")
+                    return f"✅ Đã chọn tài liệu: {selected_filename}"
+                else:
+                    logger.warning(f"Cannot find document_id for filename: {selected_filename}")
+                    return f"❌ Không tìm thấy ID cho tài liệu: {selected_filename}"
+            else:
+                logger.error("Document management service not available")
+                return "❌ Dịch vụ quản lý tài liệu không khả dụng"
+                
+        except Exception as e:
+            error_msg = f"Error setting selected document: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+    
+    def get_selected_document_id(self) -> Optional[str]:
+        """
+        Get the current selected document ID.
+        
+        Returns:
+            Selected document ID or None if no document is selected
+        """
+        return self.selected_document_id
+    
+    def get_selected_document_filename(self) -> Optional[str]:
+        """
+        Get the current selected document filename.
+        
+        Returns:
+            Selected document filename or None if no document is selected
+        """
+        return self.selected_document
     
     def get_service_status(self) -> Dict[str, Any]:
         """
