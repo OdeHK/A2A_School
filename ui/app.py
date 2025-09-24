@@ -13,26 +13,6 @@ logger = logging.getLogger(__name__)
 # Initialize the UI integration service
 ui_service = UIIntegrationService()
 
-# def add_file(new_file_path:str, current_file_list: List):
-#     """Handle file upload and add to current list"""
-#     try:
-#         updated_list, status_msg = ui_service.handle_file_upload(new_file_path)
-#         logger.info(f"File upload status: {status_msg}")
-#         return updated_list
-#     except Exception as e:
-#         logger.error(f"Error in add_file: {str(e)}")
-#         return current_file_list
-# def process_uploaded_document(file_path:str):
-#     """Process the selected document through RAG pipeline"""
-#     try:
-#         status_msg = ui_service.process_selected_document(file_path)
-#         logger.info(f"Document processing status: {status_msg}")
-#         return status_msg
-#     except Exception as e:
-#         error_msg = f"Error processing document: {str(e)}"
-#         logger.error(error_msg)
-#         return error_msg
-
 def process_uploaded_document(file_path:str):
     """Process the selected document through RAG pipeline"""
     try:
@@ -83,6 +63,23 @@ def handle_single_selection(selected_items):
         # Chỉ giữ lại item được chọn cuối cùng
         return [selected_items[-1]]
     return selected_items
+
+def handle_document_selection(selected_items):
+    """Handle document selection and update UI service"""
+    try:
+        if selected_items and len(selected_items) > 0:
+            selected_filename = selected_items[0]  # Get the first (and only) selected item
+            status_msg = ui_service.set_selected_document(selected_filename)
+            logger.info(f"Document selection status: {status_msg}")
+            return status_msg
+        else:
+            # No document selected
+            ui_service.set_selected_document("")
+            return "Chưa chọn tài liệu nào"
+    except Exception as e:
+        error_msg = f"Error in document selection: {str(e)}"
+        logger.error(error_msg)
+        return error_msg
 
 def on_loader_change(loader_value):
     """Handle loader dropdown change"""
@@ -193,16 +190,6 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
                 sign_in_classroom_btn = gr.Button(value="Đăng nhập Google Classroom")
 
 
-    # Event handlers
-    # file_upload_btn.upload(
-    #     fn=add_file,
-    #     inputs=[file_upload_btn, file_list_state],
-    #     outputs=[file_list_state]
-    # ).success(
-    #     fn=process_uploaded_document,
-    #     inputs=[file_upload_btn],
-    #     outputs=[status_display]
-    # )
 
     file_upload_btn.upload(
         fn=process_uploaded_document,
@@ -226,6 +213,10 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
         fn=handle_single_selection,
         inputs=file_list_checkbox,
         outputs=file_list_checkbox
+    ).then(
+        fn=handle_document_selection,
+        inputs=file_list_checkbox,
+        outputs=status_display
     )
 
     # Chat functionality

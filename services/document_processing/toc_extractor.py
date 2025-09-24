@@ -171,7 +171,7 @@ class TOCExtractor:
         )
         
         # STEP 3: Generate content using TextRank for each section
-        content_items = self._generate_content_items(toc_sections, toc_generator)
+        content_items = self._generate_content_items(toc_sections, bookmark_tree)
         content_data = ContentData(
             document_id=document_id,
             extraction_date=datetime.now().isoformat(),
@@ -244,13 +244,13 @@ class TOCExtractor:
         return sections
     
     def _generate_content_items(self, toc_sections: List[TOCSection], 
-                               toc_generator: TOCGenerator) -> List[ContentItem]:
+                               bookmark_tree: List[BookmarkNode]) -> List[ContentItem]:
         """
         Generate content for each TOC section using TextRank.
         
         Args:
             toc_sections: TOC sections with nested structure
-            toc_generator: TOCGenerator instance with processed content
+            bookmark_tree: Complete bookmark tree including full_document node
             
         Returns:
             List of ContentItem with generated content
@@ -258,7 +258,7 @@ class TOCExtractor:
         content_items = []
         
         # Create a mapping from title to BookmarkNode for content lookup
-        title_to_node = self._create_title_mapping(toc_generator.bookmark_tree)
+        title_to_node = self._create_title_mapping(bookmark_tree)
         
         def process_section(section: TOCSection):
             """Recursively process sections and generate content."""

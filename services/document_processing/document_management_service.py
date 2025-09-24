@@ -125,7 +125,8 @@ class DocumentManagementService:
             if extract_toc:
                 logger.info("Extracting table of contents...")
                 extraction_result = self.toc_extractor.extract_toc_and_content(
-                    str(stored_file_path)
+                    str(stored_file_path),
+                    document_id=stored_document_id
                 )
                 
                 # Save TOC structure data và content data vào session
@@ -240,7 +241,7 @@ class DocumentManagementService:
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
-        return self._create_table_of_contents_from_structure_data(document_id, toc_structure_data)
+        return toc_structure_data
     
     def get_table_of_contents_as_string(self, document_id: str) -> Optional[str]:
         """
@@ -292,6 +293,15 @@ class DocumentManagementService:
         """
         return self.repository.get_toc_structure_data(document_id)
     
+    
+    def get_document_id_dict(self) -> Dict[str, str]:
+        """
+        Get a dictionary mapping document IDs to file names for current session.
+        Returns:
+            Dictionary of document_id -> file_name
+        """
+        document_metadata_list = self.repository.list_session_documents()
+        return {doc.document_id: doc.file_name for doc in document_metadata_list}
     
     def update_chunking_strategy(self, strategy_type: ChunkingStrategyType) -> None:
         """
@@ -600,6 +610,7 @@ class DocumentManagementService:
         documents_info = []
         for name, doc_info in library.items():
             documents_info.append({
+                'document_id': doc_info.get('document_id'),
                 'name': doc_info['name'],
                 'title_count': len(doc_info.get('title', []))
             })
@@ -691,6 +702,7 @@ class DocumentManagementService:
             # Search in name
             if query_lower in doc_info['name'].lower():
                 matching_docs.append({
+                    'document_id': doc_info.get('document_id'),
                     'name': doc_info['name'],
                     'match_type': 'name'
                 })
@@ -700,6 +712,7 @@ class DocumentManagementService:
             for title in doc_info.get('title', []):
                 if query_lower in title.lower():
                     matching_docs.append({
+                        'document_id': doc_info.get('document_id'),
                         'name': doc_info['name'],
                         'match_type': 'title',
                         'matched_title': title
@@ -723,8 +736,9 @@ class DocumentManagementService:
         if not doc_info:
             return None
         
-        # Add additional information (removed document_id and path fields)
+        # Add additional information (include document_id, exclude path)
         result = {
+            'document_id': doc_info.get('document_id'),
             'name': doc_info['name'],
             'title': doc_info.get('title', []),
             'title_count': len(doc_info.get('title', []))
