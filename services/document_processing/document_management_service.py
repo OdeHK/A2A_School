@@ -101,7 +101,7 @@ class DocumentManagementService:
             # Create initial metadata
             file_path_obj = Path(file_path)
             metadata = DocumentMetadata(
-                document_id=stored_document_id,
+                document_id=document_id,
                 file_name=file_path_obj.name,
                 file_path=str(stored_file_path),
                 file_size=file_path_obj.stat().st_size,
@@ -126,20 +126,20 @@ class DocumentManagementService:
                 logger.info("Extracting table of contents...")
                 extraction_result = self.toc_extractor.extract_toc_and_content(
                     str(stored_file_path),
-                    document_id=stored_document_id
+                    document_id=document_id
                 )
                 
                 # Save TOC structure data và content data vào session
                 toc_structure_data = extraction_result.toc_structure.to_dict()
                 content_data = extraction_result.content_data.to_dict()
                 
-                self.repository.save_toc_structure_data(stored_document_id, toc_structure_data)
-                self.repository.save_content_data(stored_document_id, content_data)
+                self.repository.save_toc_structure_data(document_id, toc_structure_data)
+                self.repository.save_content_data(document_id, content_data)
                 
                 logger.info(f"Extracted ToC with {len(extraction_result.toc_structure.sections)} sections")
                 logger.info(f"Generated content for {len(extraction_result.content_data.content)} items")
-                logger.info(f"Saved TOC structure and content data to session")
-            
+                logger.info(f"Saved ToC structure and content data to session")
+
             # Chunk documents
             logger.info("Chunking documents...")
             chunks = self.chunker.chunk(iter(docs_list))
@@ -257,7 +257,8 @@ class DocumentManagementService:
         toc_structure_data = self.repository.get_toc_structure_data(document_id)
         if not toc_structure_data:
             return None
-        
+        logger.info(f"Raw TOC structure data: {toc_structure_data}")
+
         return self._format_toc_structure_as_string(document_id, toc_structure_data)
     
     def list_session_documents(self) -> List[DocumentMetadata]:
@@ -408,7 +409,6 @@ class DocumentManagementService:
         result.append(f"Extraction Method: {toc.extraction_method}")
         result.append(f"Extracted on: {toc.extraction_date}")
         result.append("-" * 50)
-        
         # Format sections recursively
         for index, section in enumerate(toc.sections):
             result.extend(self._format_section_as_string(section, section_index=str(index + 1)))
@@ -552,26 +552,23 @@ class DocumentManagementService:
             List of formatted string lines
         """
         # Skip items without required fields
-        if 'title' not in item:
+        if 'section_title' not in item:
             return []
-            
-        page_info = f" (Page {item['page']})" if item.get('page') else ""
-        line = f"{section_index} {item['title']}{page_info}"
-        
+
+        page_info = f" (Page {item['page_number']})" if item.get('page_number') else ""
+        line = f"{section_index} {item['section_title']}{page_info}"
+
         result = [line]
         
         # Format children
-        children_ids = item.get('children_ids', [])
-        id_to_item = {item['id']: item for item in all_structure_data if 'id' in item}
-        
-        for child_index, child_id in enumerate(children_ids):
-            if child_id in id_to_item:
-                child_item = id_to_item[child_id]
-                result.extend(self._format_structure_item_as_string(
-                    child_item, 
-                    all_structure_data, 
-                    f"{section_index}.{child_index + 1}"
-                ))
+        children = item.get('children', [])
+
+        for child_index, child_item in enumerate(children):
+            result.extend(self._format_structure_item_as_string(
+                child_item, 
+                all_structure_data, 
+                f"{section_index}.{child_index + 1}"
+            ))
 
         return result
     
