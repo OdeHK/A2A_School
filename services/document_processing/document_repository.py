@@ -50,76 +50,6 @@ class DocumentRepository:
     def create_new_session(self) -> str:
         """
         Create a new session with unique ID and directory structure.
-
-        Returns:
-            Session ID
-        """
-        logger.info("Creating new session")
-
-        # Generate session ID with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        session_id = f"session_{timestamp}_{uuid.uuid4().hex[:8]}"
-
-        # Create session directory structure
-        session_dir = self.sessions_dir / session_id
-        session_dir.mkdir(exist_ok=True)
-
-        # Create subdirectories
-        (session_dir / DocumentRepositoryConstants.RAW_FILES_DIR).mkdir(exist_ok=True)
-        (session_dir / DocumentRepositoryConstants.METADATA_DIR).mkdir(exist_ok=True)
-        (session_dir / DocumentRepositoryConstants.TOC_DIR).mkdir(exist_ok=True)
-        (session_dir / DocumentRepositoryConstants.CONTENT_DIR).mkdir(exist_ok=True)  # Thêm thư mục content
-        (session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR).mkdir(exist_ok=True)  # Thêm thư mục document library
-
-        # Create session metadata
-        session_metadata = SessionMetadata(
-            session_id=session_id,
-            created_date=datetime.now(),
-            last_accessed=datetime.now(),
-            documents=[],
-            vector_store_path=str(session_dir / DocumentRepositoryConstants.VECTOR_STORE_DIR)
-        )
-        
-        # Save session metadata
-        session_metadata_file = session_dir / "session_metadata.json"
-        with open(session_metadata_file, 'w', encoding='utf-8') as f:
-            json.dump(session_metadata.model_dump(), f, indent=2, ensure_ascii=False, default=str)
-        
-        logger.info(f"Created new session: {session_id}")
-        return session_id
-
-    def save_content_data(self, document_id: str, content_data: Dict[str, Any]) -> None:
-        """
-        Save content data from TOC extractor.
-        
-        Args:
-            document_id: Document ID
-            content_data: Content data dict from TOCExtractionResult
-        """
-        session_dir = self._ensure_session()
-        content_file = session_dir / DocumentRepositoryConstants.CONTENT_DIR / f"{document_id}_content.json"
-        
-        # Save content data directly without document_id as key
-        with open(content_file, 'w', encoding='utf-8') as f:
-            json.dump(content_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Saved content data for document {document_id}")
-
-    def get_current_session_id(self) -> Optional[str]:
-        """Get current session ID."""
-        return self.current_session_id
-
-    def _ensure_session(self) -> Path:
-        """Ensure current session exists, create new one if needed."""
-        if self.current_session_dir is None:
-            self.create_new_session()
-        # At this point, self.current_session_dir must not be None
-        assert self.current_session_dir is not None, "Session directory should not be None after ensure."
-        return self.current_session_dir
-    
-    def create_new_session(self) -> str:
-        """
-        Create a new session with unique ID and directory structure.
         
         Returns:
             Session ID
@@ -161,6 +91,33 @@ class DocumentRepository:
         
         logger.info(f"Created new session: {session_id}")
         return session_id
+    
+    def save_content_data(self, document_id: str, content_data: Dict[str, Any]) -> None:
+        """
+        Save content data from TOC extractor.
+        
+        Args:
+            document_id: Document ID
+            content_data: Content data dict from TOCExtractionResult
+        """
+        session_dir = self._ensure_session()
+        content_file = session_dir / DocumentRepositoryConstants.CONTENT_DIR / f"{document_id}_content.json"
+        
+        # Save content data directly without document_id as key
+        with open(content_file, 'w', encoding='utf-8') as f:
+            json.dump(content_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved content data for document {document_id}")
+
+    def _ensure_session(self) -> Path:
+        """Ensure current session exists, create new one if needed."""
+        if self.current_session_dir is None:
+            self.create_new_session()
+        # At this point, self.current_session_dir must not be None
+        assert self.current_session_dir is not None, "Session directory should not be None after ensure."
+        return self.current_session_dir
+    
+
     
     def load_session(self, session_id: str) -> bool:
         """
@@ -204,14 +161,6 @@ class DocumentRepository:
     def get_current_session_id(self) -> Optional[str]:
         """Get current session ID."""
         return self.current_session_id
-    
-    def _ensure_session(self) -> Path:
-        """Ensure current session exists, create new one if needed."""
-        if self.current_session_dir is None:
-            self.create_new_session()
-        # At this point, self.current_session_dir must not be None
-        assert self.current_session_dir is not None, "Session directory should not be None after ensure."
-        return self.current_session_dir
     
     def store_uploaded_file(self, source_file_path: str, document_id: Optional[str] = None) -> str:
         """
