@@ -1,30 +1,29 @@
 import json
 import os
 import logging
-from typing import List, TypedDict, Optional
+from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.output_parsers import StrOutputParser
 
-from services.summarizer_agent import summarization_graph
-from services.prompt import router_node_prompt
+from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.rag.rag_service import RagService
-from services.rag.llm_service import LLMService
 from services.quiz_generation import QuizGenerationService
 from services.document_processing.document_management_service import DocumentManagementService
-
+from services.rag.llm_service import LLMService
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+    
+   
+
 # --- Định nghĩa State cho Parent Graph ---
 class ParentGraphState(TypedDict):
     user_request: str
-    selected_document_id: Optional[str]
-    document_library: Optional[list]
+    matched_document : dict
     table_of_contents: Optional[list]
-    answer: Optional[str]
+    answer: Optional[str]  # Add answer field for quiz and rag results
     route: str 
 
 class TeacherAgent:
@@ -36,10 +35,10 @@ class TeacherAgent:
     
     def __init__(
             self, 
-            rag_service: RagService,
-            quiz_generation_service: QuizGenerationService,
-            document_management_service: DocumentManagementService,
-            llm_service: LLMService):
+            rag_service,
+            quiz_generation_service,
+            document_management_service,
+            llm_service):
         """
         Initialize the Teacher Agent with required services.
 
@@ -63,28 +62,61 @@ class TeacherAgent:
             """Phân loại yêu cầu và quyết định lộ trình."""
             logger.info("--- 1. ROUTER: Phân loại yêu cầu ---")
             logger.info(f"User request: {state['user_request']}")
-            routing_chain =  router_node_prompt | self.llm_service.get_llm() | StrOutputParser()
+            llm = self.llm_service.get_llm()
+            routing_chain =  router_node_prompt | llm | StrOutputParser()
             route = routing_chain.invoke({"user_request": state["user_request"]})
             logger.info(f" -> Lộ trình được quyết định: '{route}'")
-            return {"route": route}
+            
+            document_library = self.document_management_service.get_document_library()
+            
+            find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
+            library_str = json.dumps(document_library, indent=2)
+            matched_document = find_document_chain.invoke({
+                "library_str": library_str,
+                "user_request": state["user_request"]
+            })
+            logger.info(f"Matched document: {matched_document}")
+            print(f"Matched document: {matched_document}")
+            if matched_document is None:
+                logger.warning("Không tìm thấy tài liệu phù hợp trong thư viện.")
+            return {"route": route,"matched_document":matched_document}
 
         def summarizer_node(state: ParentGraphState):
             """Thực thi subgraph tóm tắt."""
             logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
-            logger.info(f"Inputs: user_request={state['user_request']}, document_library={state['document_library']}, table_of_contents={state['table_of_contents']}")
-            inputs = {
-                "user_request": state["user_request"],
-                "document_library": state["document_library"],
-                "table_of_contents": state["table_of_contents"]
-            }
-            try:
-                result = summarization_graph.invoke(inputs)
-                final_summary = result.get('summary', "Không thể tạo tóm tắt.")
-                logger.info(f"Summary result: {final_summary}")
-                return {"answer": final_summary}
-            except Exception as e:
-                logger.error(f"Error in summarizer_node: {str(e)}")
-                return {"answer": f"Đã xảy ra lỗi khi tóm tắt: {str(e)}"}
+            
+            # Get content data instead of table of contents
+            document_id = state["matched_document"]["document_id"]
+            title = state["matched_document"]["title"][0]
+            
+            logger.info(f"Getting content for document_id: {document_id}, title: {title}")
+            
+            # Get content data which contains the actual content
+            content_data = self.document_management_service.get_content_data(document_id)["content"]
+            
+            if not content_data:
+                logger.warning(f"No content data found for document: {document_id}")
+                return { "answer": "Không tìm thấy nội dung để tóm tắt."}
+            
+            # Find content by title
+            extracted_content = None
+            for content_item in content_data:
+                if content_item.get("title") == title:
+                    extracted_content = content_item.get("content")
+                    break
+            
+            if not extracted_content:
+                logger.warning(f"No content found for title: {title}")
+                no_content_msg = f"Không tìm thấy nội dung cho '{title}'."
+                return {"answer": no_content_msg}
+            
+            logger.info(f"Found content length: {len(extracted_content)} characters")
+            
+            llm = self.llm_service.get_llm()
+            chain = summarize_content_node_prompt | llm
+            summary = chain.invoke({"input_text": extracted_content})
+            logger.info(f"Summary generated: {summary}")
+            return {"answer": summary}
 
         def rag_qa_node(state: ParentGraphState):
             """Trả lời câu hỏi dựa trên tài liệu (RAG)."""
@@ -155,6 +187,7 @@ class TeacherAgent:
                 "rag_qa": "rag_qa"
             }
         )
+
         workflow.add_edge("summarizer", END)
         workflow.add_edge("quiz_generation", END)
         workflow.add_edge("rag_qa", END)
@@ -163,80 +196,7 @@ class TeacherAgent:
         logger.info("TeacherAgent workflow graph compiled.")
         return workflow.compile()
 
-    def handle_chat_query(self, query: str, chat_history: Optional[List] = None, selected_document_id: Optional[str] = None):
-        """
-        Handle a chat query by routing to the appropriate subgraph.
-        Args:
-            query: The user's query string.
-            chat_history: Optional list of previous chat messages.
-            selected_document_id: Selected document ID from UI.
-        
-        Returns:
-            A tuple of (answer string, updated chat history list).
-        """
-        
-        try:
-            if not query or not query.strip():
-                return "Xin chào! Tôi có thể giúp gì cho bạn?", chat_history or []
-            
-            # Determine document_id to use
-            if not selected_document_id:
-                try:
-                    document_id_dict = self.document_management_service.get_document_id_dict()
-                    first_document_id = next(iter(document_id_dict))
-                    document_id = first_document_id
-                    logger.info(f"No selected_document_id provided, using first document: {document_id}")
-                except (StopIteration, AttributeError) as e:
-                    logger.warning(f"No documents available in document_id_dict: {str(e)}")
-                    return "Không có tài liệu nào được tải lên. Vui lòng tải tài liệu trước khi đặt câu hỏi.", chat_history or []
-            else:
-                document_id = selected_document_id
-                logger.info(f"Using provided selected_document_id: {document_id}")
-            
-            # Get document library and table of contents
-            try:
-                # TODO: get_document_library method will be implemented later in document_management_service
-                document_library = None  # Placeholder until get_document_library is implemented
-                
-                # Get table of contents as string and convert to list format
-                # TODO: Thống nhất format với Khôi để tránh xung đột trong summarization_agent
-                toc_string = self.document_management_service.get_table_of_contents_as_string(document_id)
-                if toc_string:
-                    # Convert string to list by splitting on newlines and filtering empty lines
-                    table_of_contents = [line.strip() for line in toc_string.split('\n') if line.strip()]
-                else:
-                    table_of_contents = []
-                
-                logger.info(f"Retrieved table_of_contents for document_id: {document_id}, items: {len(table_of_contents)}")
-            except Exception as e:
-                logger.error(f"Error retrieving document data: {str(e)}")
-                return f"Không thể truy xuất dữ liệu tài liệu: {str(e)}", chat_history or []
 
-            # Prepare state for workflow
-            state: ParentGraphState = {
-                "user_request": query,
-                "selected_document_id": document_id,
-                "document_library": document_library,
-                "table_of_contents": table_of_contents,
-                "answer": None,
-                "route": ""
-            }
-
-            # Invoke the workflow
-            result = self.workflow.invoke(state)
-            
-            # Get the answer from result
-            answer = result.get("answer", "Không thể xử lý yêu cầu.")
-            
-            # Update chat history
-            updated_history = chat_history or []
-            updated_history.append((query, answer))
-            
-            return answer, updated_history
-        
-        except Exception as e:
-            logger.error(f"Error handling chat query: {str(e)}")
-            return "Đã xảy ra lỗi khi xử lý yêu cầu.", chat_history or []
 
 # --- Logic quyết định rẽ nhánh ---
 def decide_route(state: ParentGraphState):
