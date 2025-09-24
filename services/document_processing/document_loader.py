@@ -12,7 +12,6 @@ from langchain_community.document_loaders import PyMuPDFLoader
 import requests
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfReader
-# from config.settings import get_settings
 
 from pathlib import Path
 from typing import Union, BinaryIO
@@ -85,56 +84,6 @@ class LoadingStrategy(ABC):
 
     
 # === STRATEGY PATTERN IMPLEMENTATION ===
-
-class PDFPlumberLoadingStrategy(LoadingStrategy):
-    @property
-    def strategy_name(self) -> str:
-        return PDFLoaderType.PDFPLUMBER
-
-    def load_documents(self, source: str, **kwargs) -> List[Document]:
-
-        loader = PDFPlumberLoader(source)
-        return loader.load()
-
-    def lazy_load_documents(self, source: str, **kwargs):
-        loader = PDFPlumberLoader(source)
-        yield from loader.lazy_load()
-
-
-class TesseractOCR(LoadingStrategy):
-    @property
-    def strategy_name(self) -> str:
-        return PDFLoaderType.TESSERACT_OCR
-
-    def load_documents(self, source: str, **kwargs) -> List[Document]:
-        document = pymupdf.open(source)
-        docs = []
-        for page_num in range(len(document)):
-            # Ví dụ Windows: đường dẫn tới tesseract.exe
-            pytesseract.pytesseract.tesseract_cmd = r"C:\Users\likgn\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-            page = document.load_page(page_num)
-            # Xuất trang dưới dạng ảnh (250dpi)
-            pix = page.get_pixmap(dpi=250)
-            img = Image.open(io.BytesIO(pix.tobytes(output="png")))
-
-            # OCR với tiếng Việt: lang="vie"
-            page_text = pytesseract.image_to_string(img, lang="vie+eng")
-            if page_text:
-                docs.append(Document(page_content=page_text, metadata={"source": source, "page": page_num + 1}))
-
-        return docs
-
-    def lazy_load_documents(self, source: str, **kwargs):
-        # Ví dụ Windows: đường dẫn tới tesseract.exe
-        pytesseract.pytesseract.tesseract_cmd = r"C:\Users\likgn\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-        document = pymupdf.open(source)
-        for page_num in range(len(document)):
-            page = document.load_page(page_num)
-            pix = page.get_pixmap(dpi=300)
-            img = Image.open(io.BytesIO(pix.tobytes(output="png")))
-            page_text = pytesseract.image_to_string(img, lang="vie+eng")
-            if page_text:
-                yield Document(page_content=page_text, metadata={"source": source, "page": page_num + 1})
 
 class PyMuPDFLoadingStrategy(LoadingStrategy):
 

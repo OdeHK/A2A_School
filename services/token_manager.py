@@ -95,13 +95,15 @@ class TokenManager:
         
         return int(base_tokens * vietnamese_factor)
     
-    def calculate_optimal_top_k(self, chunks: List[str], title: str = "") -> int:
+    def calculate_optimal_top_k(self, chunks: List[str], title: str = "", 
+                               available_tokens: int = None) -> int:
         """
         Calculate optimal top-k value to maximize token utilization
         
         Args:
             chunks: List of text chunks to select from
             title: Title for token calculation
+            available_tokens: Override available tokens (optional)
             
         Returns:
             Optimal top-k value that maximizes token usage without exceeding limits
@@ -113,8 +115,11 @@ class TokenManager:
         title_tokens = self.count_tokens(title)
         formatting_overhead = 50  # Overhead for formatting, separators, etc.
         
-        # Available tokens for content
-        self.available_tokens = self.token_budget.optimal_input_tokens - title_tokens - formatting_overhead
+        # Available tokens for content - use override if provided
+        if available_tokens is not None:
+            self.available_tokens = available_tokens
+        else:
+            self.available_tokens = self.token_budget.optimal_input_tokens - title_tokens - formatting_overhead
         
         # Ensure available_tokens is positive
         if self.available_tokens <= 0:
