@@ -129,8 +129,7 @@ class SummarizerStrategy(TOCContentStrategy):
             # Calculate optimal top_k based on token budget
             optimal_top_k = self.token_manager.calculate_optimal_top_k(
                 chunks=chunks,
-                available_tokens=2000,  # Conservative limit for basic strategy
-                target_top_k=top_k
+                title=title
             )
             
             # Rank by score
@@ -246,7 +245,7 @@ class TOCGenerator:
             **strategy_kwargs: Additional parameters for strategy
             
         Returns:
-            List[BookmarkNode]: Generated bookmark tree
+            List[BookmarkNode]: Generated bookmark tree with full_document node
         """
         if not self.strategy:
             raise RuntimeError("No content generation strategy set. Use set_strategy() first.")
@@ -262,7 +261,22 @@ class TOCGenerator:
             
             self.process_node(root, next_root_page, **strategy_kwargs)
         
-        return self.bookmark_tree
+        # Create full_document node that contains all existing nodes as children
+        full_document_node = BookmarkNode(
+            title="full_document",
+            page=1,  # Start from page 1
+            children=self.bookmark_tree.copy()  # All existing nodes become children
+        )
+        
+        # Process the full_document node using the same logic as other nodes
+        # This will combine content from all its children (which are the root nodes)
+        self.process_node(full_document_node, len(self.reader.pages) + 1, **strategy_kwargs)
+        
+        # Return the tree with full_document as an additional root node
+        result_tree = self.bookmark_tree.copy()
+        result_tree.append(full_document_node)
+        
+        return result_tree
 
     def generate_toc_up_to_title(self, title: str, **strategy_kwargs) -> List[BookmarkNode]:
         """
@@ -284,6 +298,30 @@ class TOCGenerator:
             raise RuntimeError("No content generation strategy set. Use set_strategy() first.")
 
         logger.info(f"Generating TOC up to title '{title}' using strategy: {self.strategy.strategy_name}")
+
+        # Special case: handle full_document
+        if title == "full_document":
+            # First, process all root nodes
+            for i, root in enumerate(self.bookmark_tree):
+                next_root_page = None
+                if i + 1 < len(self.bookmark_tree):
+                    next_root_page = self.bookmark_tree[i + 1].page
+                self.process_node(root, next_root_page, **strategy_kwargs)
+            
+            # Create full_document node with all existing nodes as children
+            full_document_node = BookmarkNode(
+                title="full_document",
+                page=1,
+                children=self.bookmark_tree.copy()
+            )
+            
+            # Process the full_document node
+            self.process_node(full_document_node, len(self.reader.pages) + 1, **strategy_kwargs)
+            
+            # Return tree with full_document node
+            result_tree = self.bookmark_tree.copy()
+            result_tree.append(full_document_node)
+            return result_tree
 
         # 1. Find the target node and the path to it
         target_node, path = self._find_node_and_path(title)
@@ -426,6 +464,28 @@ class TOCGenerator:
     
     def find_content_by_title(self, title: str, nodes: Optional[List[BookmarkNode]] = None) -> Optional[str]:
         """Find content by title."""
+        # Special case: handle full_document
+        if title == "full_document":
+            if self.strategy:
+                # Process all root nodes first
+                for i, root in enumerate(self.bookmark_tree):
+                    next_root_page = None
+                    if i + 1 < len(self.bookmark_tree):
+                        next_root_page = self.bookmark_tree[i + 1].page
+                    if not root.content:
+                        self.process_node(root, next_root_page)
+                
+                # Create temporary full_document node and process it
+                full_document_node = BookmarkNode(
+                    title="full_document",
+                    page=1,
+                    children=self.bookmark_tree.copy()
+                )
+                self.process_node(full_document_node, len(self.reader.pages) + 1)
+                return full_document_node.content
+            else:
+                return "No strategy set for full_document content generation."
+        
         if nodes is None:
             nodes = self.bookmark_tree
         
@@ -450,6 +510,9 @@ class TOCGenerator:
             titles.append(node.title)
             if node.children:
                 titles.extend(self.get_all_titles(node.children))
+        
+        # Add full_document as a special available title
+        titles.append("full_document")
         
         return titles
     

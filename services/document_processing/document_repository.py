@@ -574,8 +574,9 @@ class DocumentRepository:
         # Load existing library
         document_library = self.get_document_library()
         
-        # Add/update document with name as key, without document_id and path
+        # Add/update document with name as key, including document_id but not path
         document_library[name] = {
+            'document_id': document_id,
             'name': name,
             'title': title
         }

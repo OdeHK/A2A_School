@@ -1,72 +1,62 @@
 from langchain_core.prompts import ChatPromptTemplate
 
 find_document_node_prompt = ChatPromptTemplate.from_template(
-    """
-<ROLE>
-Bạn là một công cụ tìm kiếm ngữ nghĩa thông minh cho một thư viện tài liệu.
-</ROLE>
+"""
+<ROLE> 
+Bạn là một công cụ tìm kiếm ngữ nghĩa thông minh cho một thư viện tài liệu. 
+</ROLE> 
 
-<OBJECTIVE>
-Nhiệm vụ của bạn là hiểu sâu yêu cầu của người dùng, tìm ra một tài liệu duy nhất phù hợp nhất từ thư viện được cung cấp, và sau đó xác định một tiêu đề duy nhất phù hợp nhất trong tài liệu đó.
-</OBJECTIVE>
+<OBJECTIVE> 
+Nhiệm vụ của bạn là hiểu sâu yêu cầu của người dùng, tìm ra một tài liệu duy nhất phù hợp nhất từ thư viện được cung cấp, và sau đó xác định một tiêu đề duy nhất phù hợp nhất trong tài liệu đó. 
+</OBJECTIVE> 
 
-<INPUT_SCHEMA>
-library_str: Một chuỗi JSON chứa danh sách các đối tượng tài liệu. Mỗi đối tượng có các trường "name" (tên), "path" (đường dẫn), và "title" (một danh sách các tiêu đề).
-user_request: Một chuỗi văn bản chứa truy vấn tìm kiếm của người dùng.
-</INPUT_SCHEMA>
+<INPUT_SCHEMA> 
+library_str: Một chuỗi JSON chứa danh sách các đối tượng tài liệu. 
+Mỗi đối tượng có các trường: 
+- key (tên duy nhất trong dict, ví dụ "machine_learning_can_ban"), 
+- document_id (mã định danh của tài liệu), 
+- name (tên tài liệu), 
+- title (một danh sách các tiêu đề). 
 
-<INPUT>
-Thư viện tài liệu:
-```json
-{library_str}
-```
-Yêu cầu của người dùng:
-"{user_request}"
+user_request: Một chuỗi văn bản chứa truy vấn tìm kiếm của người dùng. 
+</INPUT_SCHEMA> 
+
+<INPUT> 
+Thư viện tài liệu: ```json 
+{library_str} 
+Yêu cầu của người dùng: "{user_request}"
 </INPUT>
 
-<INSTRUCTIONS>
-Phân tích user_request để hiểu rõ ý định và ý nghĩa cốt lõi.
-So sánh ý định này với trường name và danh sách title của mỗi tài liệu trong library_str để tìm ra tài liệu phù hợp nhất.
-Từ tài liệu phù hợp nhất đã tìm thấy, chọn ra MỘT title duy nhất tương ứng nhất với user_request.
-Nếu không tìm thấy tài liệu hoặc tiêu đề nào phù hợp, chỉ trả về một đối tượng JSON rỗng: {{}}.
+<INSTRUCTIONS> 
+1. Phân tích user_request để hiểu rõ ý định và ý nghĩa cốt lõi. 
+2. So sánh ý định này với **key** của từng tài liệu trong library_str trước tiên. - Nếu tìm thấy key phù hợp, dùng tài liệu đó. - Nếu KHÔNG tìm thấy key phù hợp, chọn tài liệu đầu tiên trong library_str. 
+3. Trong tài liệu đã chọn: - Nếu tìm thấy một title khớp với user_request, chọn title đó. - Nếu KHÔNG tìm thấy title phù hợp, trả về `"title": [null]`. 
+4. Nếu library_str rỗng, trả về đối tượng JSON rỗng: {{}}.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
 Câu trả lời BẮT BUỘC phải là một đối tượng JSON duy nhất.
-Đối tượng JSON phải chứa các trường: name, path, và title.
-Trường title phải là một danh sách chỉ chứa MỘT chuỗi tiêu đề phù hợp nhất.
-Không bao gồm bất kỳ văn bản hội thoại, lời giải thích hay định dạng markdown nào trong kết quả đầu ra.
+Đối tượng JSON phải chứa các trường: document_id và title.
+- Trường title phải là một danh sách chỉ chứa MỘT giá trị (chuỗi hoặc null).
+- Không bao gồm bất kỳ văn bản hội thoại, lời giải thích hay định dạng markdown nào trong kết quả đầu ra.
 </OUTPUT_GUIDELINES>
 
-<EXAMPLE>
-<INPUT>
-Thư viện tài liệu:
-```json
-[
-  {{
-   "name": "Python",
-    "path": "tai-lieu/python.pdf",
-    "title": [ "Giới thiệu sản phẩm", "Hướng dẫn cài đặt", "Xử lý sự cố"]
-  }},
-  {{
-        "name": "lec06-slides",
-        "path": "lec06-slides.pdf",
-        "title": ["14.3. Gởi email có đính kèm file","14.4. Tìm hiểu thêm",]
-  }}
-]
-```
-Yêu cầu của người dùng:
-"Tóm tắt cho tôi sách Python , phần có tiêu đề 'Giới thiệu sản phẩm'."
+<EXAMPLE> 
+<INPUT> 
+Thư viện tài liệu: 
+```json {{ 
+"machine_learning_can_ban": 
+{{ "document_id": "doc_222abc", "name": "machine_learning_can_ban", 
+"title": [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ] }}, 
+"deep_learning_nang_cao":
+{{ "document_id": "doc_333xyz", "name": "deep_learning_nang_cao",
+"title": [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ] }}
+}} ```
+Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer trong tài liệu deep learning nâng cao." 
 </INPUT>
-<OUTPUT>
-```json
-{{
-    "name": "Python",
-    "path": "tai-lieu/python.pdf",
-    "title": ["Giới thiệu sản phẩm"]
-}}
-```
-</OUTPUT>
+<OUTPUT> 
+{{"document_id": "doc_333xyz", "title": ["Transformer"]}}
+</OUTPUT> 
 </EXAMPLE>
 """
 )
@@ -121,7 +111,7 @@ Bạn là một chuyên gia phân loại yêu cầu của người dùng.
 </ROLE>
 
 <OBJECTIVE>
-Phân tích yêu cầu của người dùng và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa, general_qa.
+Phân tích yêu cầu của người dùng và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa.
 </OBJECTIVE>
 
 <INPUT_SCHEMA>
