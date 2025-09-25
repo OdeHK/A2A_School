@@ -32,12 +32,12 @@ from services.models import (
 from langchain.schema.document import Document
 
 
-def run_manual_tests():
+def test_process_uploaded_document():
     """Manual tests for debugging and development."""
     print("\n=== Manual TOC Extractor Integration Tests ===")
     
     # Test with real file (if available)
-    test_file = "D:\\Project\\A2A_School\\example_data\\python_rat_la_co_ban.pdf"
+    test_file = ".\\example_data\\one_page_latex_document.pdf"
     if os.path.exists(test_file):
         print(f"\nTesting with real file: {test_file}")
         
@@ -57,8 +57,18 @@ def run_manual_tests():
             content_data = service.get_content_data(result.document_id)
             print(f"Content data retrieved: {content_data['content']} items")
 
+            # Get TOC structure using service method
+            toc = service.get_table_of_contents(result.document_id)
+            print(f"TOC structure retrieved: {toc}")
 
-            
+            # Get TOC as string format 
+            toc_str = service.get_table_of_contents_as_string(result.document_id)
+            print(f"TOC as string:\n{toc_str}")
+
+            # Get document library
+            library = service.get_document_library()
+            print(f"Document library: {library}")
+
         except Exception as e:
             print(f"Error in manual test: {str(e)}")
     else:
@@ -71,4 +81,4 @@ if __name__ == "__main__":
     unittest.main(verbosity=2, exit=False)
     
     # Run manual tests for debugging
-    run_manual_tests()
+    test_process_uploaded_document()
