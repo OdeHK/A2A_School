@@ -65,6 +65,10 @@ def test_process_uploaded_document():
             toc_str = service.get_table_of_contents_as_string(result.document_id)
             print(f"TOC as string:\n{toc_str}")
 
+            # Get document library
+            library = service.get_document_library()
+            print(f"Document library: {library}")
+
         except Exception as e:
             print(f"Error in manual test: {str(e)}")
     else:
