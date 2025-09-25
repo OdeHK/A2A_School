@@ -133,7 +133,7 @@ class TOCExtractor:
         logger.info(f"  - Embedding Model: {embedding_model}")
         logger.info(f"  - Mode: Separate TOC + Content files with ID mapping")
     
-    def extract_toc_and_content(self, pdf_path: str, document_id: Optional[str] = None) -> TOCExtractionResult:
+    def extract_toc_and_content(self, pdf_path: str, document_id: str) -> TOCExtractionResult:
         """
         Main method to extract both TOC structure and content.
         
@@ -146,14 +146,6 @@ class TOCExtractor:
         """
         logger.info(f"Starting TOC extraction for: {pdf_path}")
         
-        # Generate document ID if not provided
-        if not document_id:
-            pdf_name = Path(pdf_path).stem
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            document_id = f"{timestamp}"
-        
-        logger.info(f"Document ID: {document_id}")
-        
         # Validate PDF file
         if not Path(pdf_path).exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
@@ -161,6 +153,8 @@ class TOCExtractor:
         # STEP 1: Extract TOC structure using TOCGenerator
         toc_generator = self._create_toc_generator(pdf_path)
         bookmark_tree = toc_generator.generate_toc()
+
+        logger.info(f"Extracted: bookmark_tree {bookmark_tree}")
         
         # STEP 2: Convert to structured format with unique IDs
         toc_sections = self._convert_to_toc_sections(bookmark_tree)
@@ -238,8 +232,9 @@ class TOCExtractor:
         # Process root nodes
         sections = []
         for root_node in bookmark_tree:
-            section = process_node(root_node, level=1, parent_id=None)
-            sections.append(section)
+            if root_node.title != "full_document":
+                section = process_node(root_node, level=1, parent_id=None)
+                sections.append(section)
         
         return sections
     
