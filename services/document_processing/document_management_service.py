@@ -530,7 +530,8 @@ class DocumentManagementService:
         result.append("-" * 50)
         
         # Group by level and format
-        level_1_items = [item for item in toc_structure_data if item.get('level') == 1]
+        level_1_items = [item for item in toc_structure_data 
+                         if item.get('level') == 1 and item.get('section_title') != "full_document"]
          
         for index, item in enumerate(level_1_items):
             result.extend(self._format_structure_item_as_string(item, toc_structure_data, str(index + 1)))
