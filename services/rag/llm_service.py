@@ -70,6 +70,8 @@ def get_nvidia_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS
     return ChatNVIDIA(
         model=model_name,
         nvidia_api_key=api_key,
+        temperature=0.8,
+        top_p=0.95,
         streaming=True,
         callbacks=[StreamingStdOutCallbackHandler()],
         max_completion_tokens=100000
