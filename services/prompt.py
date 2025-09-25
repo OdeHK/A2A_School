@@ -30,7 +30,7 @@ Yêu cầu của người dùng: "{user_request}"
 <INSTRUCTIONS> 
 1. Phân tích user_request để hiểu rõ ý định và ý nghĩa cốt lõi. 
 2. So sánh ý định này với **key** của từng tài liệu trong library_str trước tiên. - Nếu tìm thấy key phù hợp, dùng tài liệu đó. - Nếu KHÔNG tìm thấy key phù hợp, chọn tài liệu đầu tiên trong library_str. 
-3. Trong tài liệu đã chọn: - Nếu tìm thấy một title khớp với user_request, chọn title đó. - Nếu KHÔNG tìm thấy title phù hợp, trả về `"title": [null]`. 
+3. Trong tài liệu đã chọn: - Nếu tìm thấy một title khớp với user_request, chọn title đó. - Nếu KHÔNG tìm thấy title phù hợp, trả về `"title": [full_document]`. 
 4. Nếu library_str rỗng, trả về đối tượng JSON rỗng: {{}}.
 </INSTRUCTIONS>
 
