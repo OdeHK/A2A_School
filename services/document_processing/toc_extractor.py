@@ -232,9 +232,8 @@ class TOCExtractor:
         # Process root nodes
         sections = []
         for root_node in bookmark_tree:
-            if root_node.title != "full_document":
-                section = process_node(root_node, level=1, parent_id=None)
-                sections.append(section)
+            section = process_node(root_node, level=1, parent_id=None)
+            sections.append(section)
         
         return sections
     
