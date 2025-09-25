@@ -177,7 +177,11 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
                 value=initial_message,
                 label="💬 Trò chuyện với AI",
                 show_label=True,
-                height=600
+                height=600,
+                latex_delimiters=[
+                    {"left": "$$", "right": "$$", "display": True},
+                    {"left": "$", "right": "$", "display": False},
+                ]
             )
             with gr.Row(equal_height=True):
                 user_input_textbox = gr.Textbox(scale=5, show_label=False, placeholder="Nhập yêu cầu của bạn...")
