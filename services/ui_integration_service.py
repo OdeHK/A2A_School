@@ -11,7 +11,7 @@ from services.quiz_generation import QuizGenerationService
 from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
-from services.agent.agent_service_old import AgentService
+from services.agent.agent_service import TeacherAgent
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class UIIntegrationService:
         self.rag_service: Optional[RagService] = None
         self.doc_management_service: Optional[DocumentManagementService] = None
         self.quiz_generation_service: Optional[QuizGenerationService] = None
-        self.agent_service: Optional[AgentService] = None
+        self.agent_service: Optional[TeacherAgent] = None
         self.current_files: List[str] = []
         self.processing_status: Dict[str, Any] = {}
         self.selected_document: Optional[str] = None  # Track selected document filename
@@ -104,7 +104,7 @@ class UIIntegrationService:
         try:
             # Ensure all required services are available
             if self.rag_service and self.quiz_generation_service and self.doc_management_service:
-                self.agent_service = AgentService(
+                self.agent_service = TeacherAgent(
                     rag_service=self.rag_service,
                     quiz_generation_service=self.quiz_generation_service,
                     document_management_service=self.doc_management_service,
@@ -329,6 +329,6 @@ class UIIntegrationService:
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
             "agent_service_initialized": self.agent_service is not None,
             "files_loaded": len(self.current_files),
-            "documents_processed": len(self.processing_status),
-            "agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
+            "documents_processed": len(self.processing_status)
+            #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }

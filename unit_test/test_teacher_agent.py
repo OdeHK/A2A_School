@@ -2,14 +2,14 @@ import os
 import json
 from services.document_processing.document_management_service import DocumentManagementService
 from services.quiz_generation import QuizGenerationService
-from services.teacher_agent import TeacherAgent
+from services.agent.agent_service import TeacherAgent, ParentGraphState
 from services.rag.rag_service import RagService
 from services.rag.llm_service import LLMService
 
 
 
 def test_summarization():
-    test_file = "D:\\Project\\A2A_School\\example_data\\python_rat_la_co_ban.pdf"
+    test_file = ".\\example_data\\python_rat_la_co_ban.pdf"
     document_management_service = DocumentManagementService()
     result = document_management_service.process_uploaded_document(
                 file_path=test_file,
@@ -40,16 +40,17 @@ def test_summarization():
         print("\n" + "="*40 + "\n")
 
 
-    
-
 
 def test_rag_qa():
+    # Tạm thời sử dụng session đã có sẵn
+    document_management_service = DocumentManagementService()
+    document_management_service.load_session(session_id="session_20250925_095132_c2a6463a")
     rag_service = RagService()
     teacher_agent = TeacherAgent(
         rag_service=rag_service,
-        quiz_generation_service=None,  
-        document_management_service=None,
-        llm_service=None
+        quiz_generation_service=None,
+        document_management_service=document_management_service,
+        llm_service=LLMService(llm_type="nvidia")
     )
 
     # Tạo dữ liệu giả
@@ -57,10 +58,12 @@ def test_rag_qa():
     
     # Vector database được lưu trữ ở folder 'vector_db' và 
     # có chứa một chunk với nội dung liên quan đến Z-score
-    inputs = {
+    inputs: ParentGraphState = {
         "user_request": request,
-        "document_library": None,  # Không cần thư viện tài liệu cho RAG
-        "table_of_contents": None
+        "matched_document": {},  
+        "table_of_contents": None,
+        "answer": None,
+        "route": ""
     }
 
     print(f"\n===== Chạy với yêu cầu RAG QA =====\nRequest: {request}")
@@ -81,15 +84,17 @@ def test_quiz_generation():
         rag_service=rag_service,
         quiz_generation_service=quiz_generation_service,
         document_management_service=document_management_service,
-        llm_service=None
+        llm_service=LLMService(llm_type="nvidia")
     )
 
     # Yêu cầu 3: Liên quan đến tạo quiz
     request_3 = "Tạo một bài quiz với 1 câu hỏi trong tài liệu 'Xử lý dữ liệu'."
-    inputs_3 = {
+    inputs_3: ParentGraphState = {
         "user_request": request_3,
-        "document_library": None,  # Không cần thư viện tài liệu cho tạo quiz
-        "table_of_contents": None
+        "matched_document": {}, 
+        "table_of_contents": None,
+        "answer": None,
+        "route": ""
     }
 
     print(f"\n===== Chạy với yêu cầu tạo quiz =====\nRequest: {request_3}")
@@ -107,4 +112,4 @@ def load_json_library(json_path):
         return json.load(f)
     
 if __name__ == "__main__":
-    test_summarization()
+    test_rag_qa()
