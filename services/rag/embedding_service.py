@@ -189,7 +189,8 @@ class HuggingFaceStrategy(EmbeddingStrategy):
         
         try:
             model_kwargs = {
-                "trust_remote_code": True
+                "trust_remote_code": True,
+                "device": "auto"
             }
             return HuggingFaceEmbeddings(model_name=self.model,
                                          cache_folder=self.cache_folder,
