@@ -152,6 +152,7 @@ class QuizGenerationService:
                  "The teacher’s requirements regarding exam content, such as preferred question types, target audience, or emphasis on specific topics.\n"
                  "Output: Return a list of tasks in the form of a JSON object. Each task corresponds to a lowest-level section (leaf node) from the Table of Contents. "
                  "The total number of questions across all tasks must match the overall exam question count.\n"
+                 "List at most 3 tasks. Select the 3 most important sections. Do not include any task with number_of_questions = 0."
                  "Each task must include the following fields:\n"
                  "section_id (string): A unique identifier for the section\n"
                  "section_title (string): The official title of the section as listed in the Table of Contents\n"
