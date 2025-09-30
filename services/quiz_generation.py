@@ -44,7 +44,6 @@ class QuizQuestion(BaseModel):
 class QuizQuestionOutput(BaseModel):
     questions: List[QuizQuestion] = Field(..., description="List of questions in the quiz")
 
-# ============================
 
 # ====== Graph State =========
 class QuizGenerationState(TypedDict):
@@ -54,10 +53,6 @@ class QuizGenerationState(TypedDict):
     section_tasks: PlanTaskOutputList  # Tasks cho map-reduce
     generated_questions: QuizQuestionOutput  # Kết quả từ từng Generate node
     final_questions: List[Dict[str, Any]]  # Kết quả cuối cùng
-
-
-# ============================
-
 
 
 class QuizGenerationService:
@@ -200,18 +195,14 @@ class QuizGenerationService:
                     # Check if vectorstore is available
                     if (self.rag_service.vector_service.vectorstore is None):
                         logger.warning("Vectorstore not initialized, using dummy questions")
-                        result = {
-                            "section_id": task.section_id,
-                            "section_title": task.section_title,
-                            "questions": [{
-                                "type": "multiple_choice",
-                                "title": "Câu hỏi mẫu do chưa có dữ liệu",
-                                "options": ["Tùy chọn A", "Tùy chọn B", "Tùy chọn C", "Tùy chọn D"],
-                                "answer": "Tùy chọn A",
-                                "answer_explanation": "Đây là câu hỏi mẫu do vectorstore chưa được khởi tạo"
-                            }],
-                            "num_generated": 1
-                        }
+                        dummy_question = QuizQuestion(
+                            type="multiple_choice",
+                            title="Câu hỏi mẫu do chưa có dữ liệu",
+                            options=["Tùy chọn A", "Tùy chọn B", "Tùy chọn C", "Tùy chọn D"],
+                            answer="Tùy chọn A",
+                            answer_explanation="Đây là câu hỏi mẫu do vectorstore chưa được khởi tạo"
+                        )
+                        generated_questions.questions.append(dummy_question)
 
                     else:
                         logger.info(f"Retrieving documents for query: {task.query_string}")
@@ -263,53 +254,20 @@ class QuizGenerationService:
                         })
                         logger.info(f"LLM raw output: {quiz_result}")
 
-                        # Convert parsed result to questions format
-                        questions = list[QuizQuestion]()
-                        for question in quiz_result.questions:
-                            question_dict = QuizQuestion(
-                                type=question.type,
-                                title=question.title
-                            )
-
-                            # Add optional fields if they exist (for multiple_choice)
-                            if question.options is not None:
-                                question_dict.options = question.options
-                            if question.answer is not None:
-                                question_dict.answer = question.answer
-                            if question.answer_explanation is not None:
-                                question_dict.answer_explanation = question.answer_explanation
-
-                            questions.append(question_dict)
-                        
-                        result = {
-                            "section_id": task.section_id,
-                            "section_title": task.section_title,
-                            # "quiz_title": quiz_result.title,
-                            "questions": questions,
-                            "num_generated": len(questions)
-                        }
-                        logger.info(f"Đã generate thành công {len(questions)} câu hỏi cho section '{task.section_title}'")
+                        generated_questions.questions.extend(quiz_result.questions)
+                        logger.info(f"Đã generate thành công {len(quiz_result.questions)} câu hỏi cho section '{task.section_title}'")
                         
                 except Exception as e:
                     logger.error(f"Error generating questions for {task.section_title}: {e}")
-                    # Create fallback result
-                    result = {
-                        "section_id": task.section_id,
-                        "section_title": task.section_title,
-                        # "quiz_title": f"Bài kiểm tra {task.section_title}",
-                        # "quiz_description": f"Kiểm tra kiến thức về {task.section_title}",
-                        "questions": [{
-                            "type": "multiple_choice",
-                            "title": f"Câu hỏi về {task.section_title}",
-                            "options": ["Lỗi khi tạo câu hỏi", "Vui lòng thử lại", "Không có dữ liệu", "Lỗi hệ thống"],
-                            "answer": "Vui lòng thử lại",
-                            "answer_explanation": f"Có lỗi xảy ra khi tạo câu hỏi cho phần {task.section_title}"
-                        }],
-                        "num_generated": 0
-                    }
-                
-                if result:  # Only append if result was created
-                    generated_questions.questions.extend(result["questions"])
+                    # Create fallback question
+                    fallback_question = QuizQuestion(
+                        type="multiple_choice",
+                        title=f"Câu hỏi về {task.section_title}",
+                        options=["Lỗi khi tạo câu hỏi", "Vui lòng thử lại", "Không có dữ liệu", "Lỗi hệ thống"],
+                        answer="Vui lòng thử lại",
+                        answer_explanation=f"Có lỗi xảy ra khi tạo câu hỏi cho phần {task.section_title}"
+                    )
+                    generated_questions.questions.append(fallback_question)
                 
             logger.info(f"MAP GENERATE hoàn thành: {len(generated_questions.questions)} câu hỏi")
             logger.info("=== MAP GENERATE NODE END ===")
@@ -320,8 +278,8 @@ class QuizGenerationService:
             Node Aggregate: Tổng hợp kết quả từ tất cả Generate nodes
             """
             logger.info("=== AGGREGATE NODE START ===")
-            generated_questions = state.get("generated_questions", [])
-            logger.info(f"Số slượng sections đã generate: {len(generated_questions.questions)}")
+            generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
+            logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
             # TODO: Từ generated_questions -> Tổng hợp thành dạng string
             final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
