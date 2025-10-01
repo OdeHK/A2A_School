@@ -1,6 +1,7 @@
 from typing import TypedDict, Dict, Any, List, Optional
 from services.rag.rag_service import RagService
-from pydantic import BaseModel, Field
+from pydantic import Field
+from services.models import PlanTaskOutput, PlanTaskOutputList, QuizQuestion, QuizQuestionOutput
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
 from langchain.output_parsers import PydanticOutputParser
@@ -14,35 +15,6 @@ def format_docs(documents) -> str:
     if not documents:
         return ""
     return "\n\n".join([doc.page_content for doc in documents])
-
-# ====== Structured output ====
-class PlanTaskOutput(BaseModel):
-    section_id: str = Field(..., description="A unique identifier for the section")
-    section_title: str = Field(..., description="The official title of the section as listed in the Table of Contents")
-    number_of_questions: int = Field(..., description="The number of questions allocated to this section")
-    question_requirements: str = Field(
-        default="Multiple choice questions with 4 options, containing 1 correct answer, designed for university-level students.",
-        description="A brief description of the expected question format and audience. This is derived from the teacher’s instructions"
-    )
-    query_string: str = Field(
-        ...,
-        description="A descriptive sentence that explains the context and focus of this section, based on the ToC"
-    )
-
-class PlanTaskOutputList(BaseModel):
-    tasks: List[PlanTaskOutput]
-
-
-class QuizQuestion(BaseModel):
-    type: str = Field(..., description="Type of question: 'multiple_choice' or 'essay'.")
-    title: str = Field(..., description="The question text")
-    options: Optional[List[str]] = Field(default=None, description="Multiple choice options (only for multiple_choice type)")
-    answer: Optional[str] = Field(default=None, description="Correct answer (only for multiple_choice type)")
-    answer_explanation: Optional[str] = Field(default=None, description="Explanation for the answer (only for multiple_choice type)")
-
-
-class QuizQuestionOutput(BaseModel):
-    questions: List[QuizQuestion] = Field(..., description="List of questions in the quiz")
 
 
 # ====== Graph State =========
@@ -278,7 +250,6 @@ class QuizGenerationService:
             generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
             logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
-            # TODO: Từ generated_questions -> Tổng hợp thành dạng string
             final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
             
             # TODO: GHI generated_questions vào file
@@ -320,10 +291,25 @@ class QuizGenerationService:
         str_output = ""
         for idx, question in enumerate(questions.questions):
             str_output += f"{idx+1}. {question.title}"
+
+            # Add options for multiple choice questions
             if question.type == "multiple_choice" and question.options:
-                # Add options for multiple choice questions
                 for opt_idx, option in enumerate(question.options):
                     str_output += f"\n   {chr(65 + opt_idx)}. {option}"
+            
+            # Add answer and explanation
+            if question.type == "multiple_choice" and question.answer and question.answer_explanation:
+                str_output += f"\n   -> {question.answer}: {question.answer_explanation}"
             str_output += "\n"
 
         return str_output
+    
+    @staticmethod
+    def _write_questions_to_file(questions: QuizQuestionOutput):
+        """Write generated questions to a JSON file for record-keeping"""
+        # TODO: Đây cách tiếp cận tạm thời, cần cải thiện sau
+        file_path = "..\\..\\session_data\\temp\\generated_questions.json" 
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(questions.model_dump_json(), f, ensure_ascii=True, indent=4)
+        logger.info(f"Generated questions written to {file_path}")
