@@ -83,7 +83,8 @@ class SummarizerStrategy(TOCContentStrategy):
         self.embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
             cache_folder=cache_folder,
-            model_kwargs={"trust_remote_code": True}
+            model_kwargs={"trust_remote_code": True, 
+                          "device": None}
         )
         
         # Initialize token manager for optimal chunking
