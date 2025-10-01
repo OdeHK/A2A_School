@@ -34,7 +34,7 @@ class PlanTaskOutputList(BaseModel):
 
 
 class QuizQuestion(BaseModel):
-    type: str = Field(..., description="Type of question: 'multiple_choice' or 'long_answer'")
+    type: str = Field(..., description="Type of question: 'multiple_choice' or 'essay'.")
     title: str = Field(..., description="The question text")
     options: Optional[List[str]] = Field(default=None, description="Multiple choice options (only for multiple_choice type)")
     answer: Optional[str] = Field(default=None, description="Correct answer (only for multiple_choice type)")
@@ -228,7 +228,7 @@ class QuizGenerationService:
                                       "{requirements}\n\n"
                                       "Question Types:\n"
                                       "- 'multiple_choice': Must include 'options' (array of choices), 'answer' (correct answer), and 'answer_explanation' (explanation why the answer is correct)\n"
-                                      "- 'long_answer': Only needs 'title' field, no options or answer required\n\n"
+                                      "- 'essay': Only needs 'title' field, no options or answer required\n\n"
                                       "For multiple choice questions:\n"
                                       "- Include a concise and unambiguous explanation: Why the correct answer is valid and why each incorrect option is flawed.\n\n"
                                       "Your response must be written in Vietnamese\n\n"
