@@ -111,7 +111,7 @@ class QuizGenerationService:
 
             plan_prompt = ChatPromptTemplate.from_messages([
                 ("system", 
-                 "Reason: Medium"
+                 "Reasoning: Medium"
                  "Your task is to design a question distribution plan for an exam set. "
                  "You are not generating the actual questions, only planning how the knowledge should be allocated across the test."
                 ),
@@ -138,14 +138,11 @@ class QuizGenerationService:
             try:
                 # Create chain with parser
                 chain = plan_prompt | llm | parser
-                result = chain.invoke({
+                section_tasks = chain.invoke({
                     "toc": state["detail_table_of_contents"],
                     "request": state["user_request"],
                     "format_instructions": parser.get_format_instructions()
                 })
-
-                # Keep parsed result as PlanTaskOutputList
-                section_tasks = result
                 logger.info(f"Đã tạo được {len(section_tasks.tasks)} section tasks")
                 
                 # Generate log for created plan
@@ -190,7 +187,7 @@ class QuizGenerationService:
             for i, task in enumerate(section_tasks.tasks):
                 logger.info(f"Đang xử lý section {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
                 logger.info(f"Section task details: {task}")
-                result = None  # Initialize result to avoid unbound variable error
+
                 try:
                     # Check if vectorstore is available
                     if (self.rag_service.vector_service.vectorstore is None):
@@ -219,7 +216,7 @@ class QuizGenerationService:
                         quiz_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
                         
                         quiz_generation_prompt = ChatPromptTemplate.from_messages([
-                            ("system", "Reason: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
+                            ("system", "Reasoning: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
                             ("human", "# Instructions\n"
                                       "Take a deep breath, this is very important to my career.\n"
                                       "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
