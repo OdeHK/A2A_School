@@ -1,13 +1,46 @@
-"""
-Data models for document processing and session management.
-"""
+
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 
+
+# =============================
+# Quiz Generation Models
+# =============================
+
+class PlanTaskOutput(BaseModel):
+    section_id: str = Field(..., description="A unique identifier for the section")
+    section_title: str = Field(..., description="The official title of the section as listed in the Table of Contents")
+    number_of_questions: int = Field(..., description="The number of questions allocated to this section")
+    question_requirements: str = Field(
+        default="Multiple choice questions with 4 options, containing 1 correct answer, designed for university-level students.",
+        description="A brief description of the expected question format and audience. This is derived from the teacher’s instructions"
+    )
+    query_string: str = Field(
+        ...,
+        description="A descriptive sentence that explains the context and focus of this section, based on the ToC"
+    )
+
+class PlanTaskOutputList(BaseModel):
+    tasks: List[PlanTaskOutput]
+
+class QuizQuestion(BaseModel):
+    type: str = Field(..., description="Type of question: 'multiple_choice' or 'essay'.")
+    title: str = Field(..., description="The question text")
+    options: Optional[List[str]] = Field(default=None, description="Multiple choice options (only for multiple_choice type)")
+    answer: Optional[str] = Field(default=None, description="Correct answer (only for multiple_choice type)")
+    answer_explanation: Optional[str] = Field(default=None, description="Explanation for the answer (only for multiple_choice type)")
+
+class QuizQuestionOutput(BaseModel):
+    questions: List[QuizQuestion] = Field(..., description="List of questions in the quiz")
+
+    
+# =============================
+# Document Processing Models
+# =============================
 
 class ProcessingStatus(str, Enum):
     """Document processing status"""
@@ -63,6 +96,10 @@ class TableOfContents(BaseModel):
         }
 
 
+# =============================
+# Session Management Models
+# =============================
+
 class SessionMetadata(BaseModel):
     """Session metadata model"""
     session_id: str
@@ -76,6 +113,10 @@ class SessionMetadata(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+
+# =============================
+# Processing Result Models
+# =============================
 
 class ProcessingResult(BaseModel):
     """Result of document processing"""
