@@ -152,7 +152,7 @@ def create_google_form_from_quiz(chat_history):
     """
     try:
         # small delay so user can read the previous assistant message
-        time.sleep(2)
+        time.sleep(2.0)
 
         status_msg = ui_service.create_google_form_from_quiz()  
 
@@ -168,7 +168,9 @@ def create_google_form_from_quiz(chat_history):
 
 def add_guide_message_for_create_form(chat_history):
     """Add a guide message before creating Google Form from quiz."""
+    user_msg = ("Hãy tạo Google Form từ bộ đề kiểm tra đã được tạo.")
     guide_msg = ("Bạn hãy đăng nhập vào tài khoản Google của mình trước khi tạo Form ở màn hình đăng nhập tiếp theo...")
+    chat_history.append(gr.ChatMessage(role="user", content=user_msg))
     chat_history.append(gr.ChatMessage(role="assistant", content=guide_msg))
     return chat_history
 
