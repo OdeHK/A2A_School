@@ -8,7 +8,7 @@ import logging
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.quiz_generation import QuizGenerationService
+from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.rag.rag_service import RagService
 
 # Configure logging for test
@@ -66,43 +66,11 @@ def test_quiz_generation():
         logger.info("Step 4: Analyzing results...")
         print("4. Results:")
         
-        document_id_result = result.get('document_id')
-        section_tasks = result.get('section_tasks', [])
         generated_questions = result.get('generated_questions', [])
         final_questions = result.get('final_questions', [])
         
-        logger.info(f"Results analysis:")
-        logger.info(f"  - Document ID: {document_id_result}")
-        logger.info(f"  - Number of section tasks: {len(section_tasks)}")
-        logger.info(f"  - Number of generated question groups: {len(generated_questions)}")
-        logger.info(f"  - Number of final questions: {len(final_questions)}")
         
-        print(f"   - Document ID: {document_id_result}")
-        print(f"   - Section tasks: {len(section_tasks)}")
-        print(f"   - Generated questions: {len(generated_questions)}")
-        print(f"   - Final questions: {len(final_questions)}")
-        
-        # Log section tasks details
-        logger.info("Section tasks details:")
-        for i, task in enumerate(section_tasks):
-            task_info = f"Task {i+1}: {task.get('section_title', 'N/A')} - {task.get('number_of_questions', 0)} questions"
-            logger.info(f"  {task_info}")
-        
-        # Log generated questions details
-        logger.info("Generated questions details:")
-        for i, gen_q in enumerate(generated_questions):
-            gen_info = f"Section {i+1}: {gen_q.get('section_title', 'N/A')} - {len(gen_q.get('questions', []))} questions generated"
-            logger.info(f"  {gen_info}")
-        
-        # Print sample questions
-        if final_questions:
-            logger.info("Sample questions (first 2):")
-            print("\n5. Sample questions:")
-            for i, q in enumerate(final_questions[:2]):  # Show first 2
-                question_text = q.get('question', 'N/A')
-                print(f"   Q{i+1}: {question_text}")
-                logger.info(f"  Q{i+1}: {question_text[:100]}..." if len(question_text) > 100 else f"  Q{i+1}: {question_text}")
-                print()
+        logger.info(f"Generated questions: {final_questions}")
         
         logger.info("✅ Test completed successfully!")
         print("✅ Test completed successfully!")
