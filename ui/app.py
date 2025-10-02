@@ -1,5 +1,5 @@
+import time
 import gradio as gr
-import pymupdf
 from typing import List
 import logging
 
@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # Initialize the UI integration service
 ui_service = UIIntegrationService()
 
+# Function to process uploaded document and add new URL
 def process_uploaded_document(file_path:str):
     """Process the selected document through RAG pipeline"""
     try:
@@ -34,6 +35,8 @@ def add_url_and_clear(new_url, current_file_list: List):
         logger.error(f"Error in add_url_and_clear: {str(e)}")
         return current_file_list, ""
 
+
+# Function to process file list 
 def convert_file_list_to_checkbox(file_list: List):
     # Chuyển đổi danh sách file thành choices cho CheckboxGroup
     if not file_list:
@@ -55,7 +58,6 @@ def update_file_list_choices():
     file_list_checkbox = convert_file_list_to_checkbox(current_files)
     logger.info(f"Current files: {current_files}")
     return file_list_checkbox
-
 
 def handle_single_selection(selected_items):
     """Đảm bảo chỉ có thể chọn một nguồn duy nhất"""
@@ -81,6 +83,7 @@ def handle_document_selection(selected_items):
         logger.error(error_msg)
         return error_msg
 
+# Function to handle loader and chunker dropdown changes
 def on_loader_change(loader_value):
     """Handle loader dropdown change"""
     try:
@@ -101,6 +104,7 @@ def on_chunker_change(chunker_value):
         logger.error(f"Error in on_chunker_change: {str(e)}")
         return chunker_value
 
+# Function to handle chat input and return response
 def handle_chat_input(user_input, chat_history):
     """Handle chat input and return response. 
     It receives the user input from the textbox and the current chat history, 
@@ -122,6 +126,38 @@ def handle_chat_input(user_input, chat_history):
         logger.error(error_msg)
         chat_history.append((user_input, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
         return chat_history, ""
+    
+# Function to handle Google Form creation from Quiz
+def add_instruction_when_create_form(chat_history: List):
+    """Add instruction message to chat history when creating Google Form"""
+    instruction_msg = "Để tạo Google Form từ bộ đề kiểm tra, bạn hãy đăng nhập vào Google và cung cấp quyền truy cập cho ứng dụng..."
+    chat_history.extend([
+        gr.ChatMessage(role="user", content="Mình muốn tạo Google Form từ bộ đề kiểm tra."),
+        gr.ChatMessage(role="assistant", content=instruction_msg),
+    ])
+
+    return chat_history
+
+def create_google_form_from_quiz(chat_history):
+    """
+    Handle Google Form creation from quiz data file.
+    """
+    try:
+        # small delay so user can read the previous assistant message
+        time.sleep(2)
+
+        status_msg = ui_service.create_google_form_from_quiz()  
+
+        # Append the service response to the chat history
+        chat_history.append(gr.ChatMessage(role="assistant", content=str(status_msg)))
+        return chat_history
+    
+    except Exception as e:
+        err = f"Error creating Google Form: {e}"
+        logger.error(err)
+        chat_history.append(gr.ChatMessage(role="assistant", content=err))
+        return chat_history
+
 
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
     with gr.Sidebar(open=False):
@@ -170,11 +206,12 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
         with gr.Column(scale=2):
             # Tin nhắn giới thiệu ban đầu
             initial_message = [
-                ("","👋 Xin chào! Tôi là trợ lý AI đắc lực của bạn!\n\n🔸 Tôi có thể giúp bạn:\n• Soạn bộ đề kiểm tra một cách chính xác\n• Tổng hợp và phân tích bài làm của học sinh\n• Quản lý lớp học thông qua Google Classroom\n\n� **Để bắt đầu:** Upload tài liệu ở bên trái 📂 hoặc kết nối với dịch vụ Google ở bên phải 🔗")
+                gr.ChatMessage(role="assistant", content="👋 Xin chào! Tôi là trợ lý AI đắc lực của bạn!\n\n🔸 Tôi có thể giúp bạn:\n• Soạn bộ đề kiểm tra một cách chính xác\n• Tổng hợp và phân tích bài làm của học sinh\n• Quản lý lớp học thông qua Google Classroom\n\n**Để bắt đầu:** Upload tài liệu ở bên trái 📂 hoặc kết nối với dịch vụ Google ở bên phải 🔗")
             ]
             
             chatbot = gr.Chatbot(
                 value=initial_message,
+                type="messages",
                 label="💬 Trò chuyện với AI",
                 show_label=True,
                 height=600,
@@ -185,16 +222,15 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
             )
             with gr.Row(equal_height=True):
                 user_input_textbox = gr.Textbox(scale=5, show_label=False, placeholder="Nhập yêu cầu của bạn...")
-                input_submit_btn = gr.Button("Gửi", scale=1)
+                input_submit_btn = gr.Button("Gửi", scale=1, variant="primary")
 
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
-                sign_in_drive_btn = gr.Button(value="Đăng nhập Google Drive")
-                sign_in_form_btn = gr.Button(value="Đăng nhập Google Form")
-                sign_in_classroom_btn = gr.Button(value="Đăng nhập Google Classroom")
+                create_form_btn = gr.Button(value="Chuyển đổi Quiz sang Google Form")
 
 
 
+    # Process file upload
     file_upload_btn.upload(
         fn=process_uploaded_document,
         inputs=[file_upload_btn],
@@ -205,14 +241,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
         outputs=[file_list_checkbox]
     )
 
-
-    # url_input.submit(
-    #     fn=add_url_and_clear,
-    #     inputs=[url_input, file_list_state],
-    #     outputs=[file_list_state, url_input]
-    # )
-
-    # Xử lý khi người dùng chọn nguồn dữ liệu
+    # Process when user chooses a uploaded source
     file_list_checkbox.change(
         fn=handle_single_selection,
         inputs=file_list_checkbox,
@@ -234,6 +263,17 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
         fn=handle_chat_input,
         inputs=[user_input_textbox, chatbot],
         outputs=[chatbot, user_input_textbox]
+    )
+
+    # Create Google Form from Quiz
+    create_form_btn.click(
+        fn=add_instruction_when_create_form,
+        inputs=[chatbot],
+        outputs=[chatbot]
+    ).then(
+        fn=create_google_form_from_quiz,
+        inputs=[chatbot],
+        outputs=[chatbot]
     )
 
     # Thêm event handlers cho dropdowns
