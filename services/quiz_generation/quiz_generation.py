@@ -39,9 +39,15 @@ class QuizGenerationService:
     def generate_quiz_set(self, 
                         document_id: str,
                         user_request: str,
-                        toc_data: str) -> Dict[str, Any]:
+                        toc_data: str) -> str:
         """
         Main entry point để sinh bộ đề MCQ
+        Args:
+            document_id: ID của tài liệu tham khảo
+            user_request: Yêu cầu của giáo viên
+            toc_data: Dữ liệu mục lục chi tiết của tài liệu
+        Returns:
+            final_questions: Các câu hỏi được sinh ra ở dạng chuỗi
         """
         logger.info("========================================")
         logger.info("QUIZ GENERATION WORKFLOW START")
@@ -62,10 +68,10 @@ class QuizGenerationService:
         
         logger.info("========================================")
         logger.info("QUIZ GENERATION WORKFLOW COMPLETE")
-        logger.info(f"Total final questions: {len(result.get('final_questions', []))}")
+        logger.info(f"Total final questions: {len(result.get('generated_questions', QuizQuestionOutput(questions=[])).questions)}")
         logger.info("========================================")
         
-        return result
+        return result.get("final_questions", [])
 
     def _create_workflow(self):
         """Create LangGraph workflow with properly configured nodes"""
@@ -193,18 +199,19 @@ class QuizGenerationService:
                                       "Take a deep breath, this is very important to my career.\n"
                                       "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
                                       "Relevant content for this section is provided in the RETRIEVED_CONTEXT.\n\n"
-                                      "Content Guidelines:\n"
+                                      "# Content Guidelines:\n"
                                       "Stick strictly to the RETRIEVED_CONTEXT. Do not introduce any new information or assumptions beyond what is provided.\n\n"
                                       "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n\n"
-                                      "Question Requirements:\n"
+                                      "# Question Requirements:\n"
                                       "{requirements}\n\n"
-                                      "Question Types:\n"
+                                      "# Question Types:\n"
                                       "- 'multiple_choice': Must include 'options' (array of choices), 'answer' (correct answer), and 'answer_explanation' (explanation why the answer is correct)\n"
                                       "- 'essay': Only needs 'title' field, no options or answer required\n\n"
                                       "For multiple choice questions:\n"
                                       "- Include a concise and unambiguous explanation: Why the correct answer is valid and why each incorrect option is flawed.\n\n"
-                                      "Your response must be written in Vietnamese\n\n"
-                                      "{format_instructions}\n\n"
+                                      "# Output format:\n"
+                                      "Your response must be written in Vietnamese\n"
+                                      "Don't wrap the output in json tags: {format_instructions}\n\n"
                                       "# Section context:\n"
                                       "{section_context}\n"
                                       "# RETRIEVED_CONTEXT:\n"
