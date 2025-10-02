@@ -220,7 +220,7 @@ class UIIntegrationService:
             logger.error(error_msg)
             return f"❌ {error_msg}"
     
-    def handle_chat_query(self, query: str, chat_history: List) -> List:
+    def handle_chat_query(self, query: str, chat_history: List) -> str:
         """
         Handle chat queries using Agent Service.
         
@@ -228,11 +228,11 @@ class UIIntegrationService:
             query: User query
             chat_history: Current chat history
         Returns:
-            List: Updated chat history
+            Response string from the agent
         """
         try:
             if not query or not query.strip():
-                return chat_history
+                return "🤖 Vui lòng nhập câu hỏi."
             
             # Check if agent service is ready
             if not self.agent_service:
@@ -241,21 +241,19 @@ class UIIntegrationService:
                 
                 if not self.agent_service:
                     error_response = "🤖 Dịch vụ AI chưa sẵn sàng. Vui lòng thử lại sau."
-                    chat_history.append((query, error_response))
-                    return chat_history
+                    return error_response
             
             # Use agent service to handle the chat
             # TODO: Pass selected_document_id when agent_service is updated to support it
-            response, updated_history = self.agent_service.handle_chat_query(query, chat_history)
+            response = self.agent_service.handle_chat_query(query, chat_history)
             
-            return updated_history
+            return response
             
         except Exception as e:
             error_msg = f"Error in chat query: {str(e)}"
             logger.error(error_msg)
-            chat_history.append((query, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
-            return chat_history
-    
+            return f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"
+
     def create_google_form_from_quiz(self) -> str:
 
         temp_folder = Path("session_data/temp")

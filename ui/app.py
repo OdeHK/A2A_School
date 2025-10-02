@@ -105,7 +105,21 @@ def on_chunker_change(chunker_value):
         return chunker_value
 
 # Function to handle chat input and return response
-def handle_chat_input(user_input, chat_history):
+def add_user_message_first(user_input, chat_history):
+    """Add user message to chat history first before processing.
+    
+    Args:
+        user_input (str): The input text from the user.
+        chat_history (List[gr.ChatMessage]): The current chat history.
+    Returns:
+        Tuple[List[gr.ChatMessage], ""]: Updated chat history with user message and cleared input box.
+    """
+    if user_input.strip():
+        chat_history.append(gr.ChatMessage(role="user", content=user_input))
+    return chat_history, ""
+
+
+def handle_chat_input(chat_history):
     """Handle chat input and return response. 
     It receives the user input from the textbox and the current chat history, 
     then returns the updated chat history and clears the input box.
@@ -114,29 +128,23 @@ def handle_chat_input(user_input, chat_history):
         user_input (str): The input text from the user.
         chat_history (List[Tuple[str, str]]): The current chat history as a list of tuples.
     Returns:
-        Tuple[List[Tuple[str, str]], ""]: Updated chat history and cleared input box.
+        List[gr.ChatMessage]: Updated chat history
 
     """
+    # Get the last user input from chat history
+    user_input = chat_history[-1].get("content") if chat_history else ""
 
     try:
-        updated_history = ui_service.handle_chat_query(user_input, chat_history)
-        return updated_history, ""
+        response = ui_service.handle_chat_query(user_input, chat_history)
+        chat_history.append(gr.ChatMessage(role="assistant", content=response))
+        return chat_history
     except Exception as e:
         error_msg = f"Error in chat: {str(e)}"
         logger.error(error_msg)
-        chat_history.append((user_input, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
-        return chat_history, ""
+        chat_history.append(gr.ChatMessage(role="assistant", content=f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
+        return chat_history
     
 # Function to handle Google Form creation from Quiz
-def add_instruction_when_create_form(chat_history: List):
-    """Add instruction message to chat history when creating Google Form"""
-    instruction_msg = "Để tạo Google Form từ bộ đề kiểm tra, bạn hãy đăng nhập vào Google và cung cấp quyền truy cập cho ứng dụng..."
-    chat_history.extend([
-        gr.ChatMessage(role="user", content="Mình muốn tạo Google Form từ bộ đề kiểm tra."),
-        gr.ChatMessage(role="assistant", content=instruction_msg),
-    ])
-
-    return chat_history
 
 def create_google_form_from_quiz(chat_history):
     """
@@ -158,8 +166,13 @@ def create_google_form_from_quiz(chat_history):
         chat_history.append(gr.ChatMessage(role="assistant", content=err))
         return chat_history
 
+def add_guide_message_for_create_form(chat_history):
+    """Add a guide message before creating Google Form from quiz."""
+    guide_msg = ("Bạn hãy đăng nhập vào tài khoản Google của mình trước khi tạo Form ở màn hình đăng nhập tiếp theo...")
+    chat_history.append(gr.ChatMessage(role="assistant", content=guide_msg))
+    return chat_history
 
-with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
+with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     with gr.Sidebar(open=False):
         side_bar_title = gr.Markdown(value="**Developer Setting**")
 
@@ -228,8 +241,6 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
             with gr.Tab("Công cụ"):
                 create_form_btn = gr.Button(value="Chuyển đổi Quiz sang Google Form")
 
-
-
     # Process file upload
     file_upload_btn.upload(
         fn=process_uploaded_document,
@@ -254,20 +265,28 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo:
 
     # Chat functionality
     user_input_textbox.submit(
-        fn=handle_chat_input,
+        fn=add_user_message_first,
         inputs=[user_input_textbox, chatbot],
         outputs=[chatbot, user_input_textbox]
+    ).then(
+        fn=handle_chat_input,
+        inputs=[chatbot],
+        outputs=[chatbot]
     )
 
     input_submit_btn.click(
-        fn=handle_chat_input,
+        fn=add_user_message_first,
         inputs=[user_input_textbox, chatbot],
         outputs=[chatbot, user_input_textbox]
+    ).then(
+        fn=handle_chat_input,
+        inputs=[chatbot],
+        outputs=[chatbot]
     )
 
     # Create Google Form from Quiz
     create_form_btn.click(
-        fn=add_instruction_when_create_form,
+        fn=add_guide_message_for_create_form,
         inputs=[chatbot],
         outputs=[chatbot]
     ).then(
