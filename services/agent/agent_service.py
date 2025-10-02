@@ -8,7 +8,7 @@ from services.document_processing import document_library
 from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.rag.rag_service import RagService
-from services.quiz_generation import QuizGenerationService
+from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.document_processing.document_management_service import DocumentManagementService
 from services.rag.llm_service import LLMService
 
