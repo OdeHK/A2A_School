@@ -196,12 +196,10 @@ class QuizGenerationService:
                         quiz_generation_prompt = ChatPromptTemplate.from_messages([
                             ("system", "Reasoning: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
                             ("human", "# Instructions\n"
-                                      "Take a deep breath, this is very important to my career.\n"
                                       "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
                                       "Relevant content for this section is provided in the RETRIEVED_CONTEXT.\n\n"
                                       "# Content Guidelines:\n"
                                       "Stick strictly to the RETRIEVED_CONTEXT. Do not introduce any new information or assumptions beyond what is provided.\n\n"
-                                      "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n\n"
                                       "# Question Requirements:\n"
                                       "{requirements}\n\n"
                                       "# Question Types:\n"
@@ -209,12 +207,13 @@ class QuizGenerationService:
                                       "- 'essay': Only needs 'title' field, no options or answer required\n\n"
                                       "For multiple choice questions:\n"
                                       "- Include a concise and unambiguous explanation: Why the correct answer is valid and why each incorrect option is flawed.\n\n"
-                                      "# Format output instruction: Use triple backticks without json tags: \n {format_instructions}\n"
-                                      "Your response must be written in Vietnamese\n"
                                       "# Section context:\n"
                                       "{section_context}\n"
                                       "# RETRIEVED_CONTEXT:\n"
-                                      "{context}")
+                                      "{context}\n\n"
+                                      "# Format output instruction: Just put it in triple backticks (```), DO NOT add json, python or any label after the backticks: \n {format_instructions}\n"
+                                      "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n"
+                                      "Your response must be written in Vietnamese\n")
                         ])
                         
                         logger.info(f"Generating {task.number_of_questions} questions using LLM")
@@ -256,10 +255,12 @@ class QuizGenerationService:
             generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
             logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
+            # Convert to human-readable list
             final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
             
-            # TODO: GHI generated_questions vào file
-
+            # Write to file for record-keeping
+            QuizGenerationService._write_questions_to_file(questions=generated_questions)
+            logger.info("Written generated questions to file")
 
             
             logger.info("=== AGGREGATE NODE END ===")
@@ -314,8 +315,8 @@ class QuizGenerationService:
     def _write_questions_to_file(questions: QuizQuestionOutput):
         """Write generated questions to a JSON file for record-keeping"""
         # TODO: Đây cách tiếp cận tạm thời, cần cải thiện sau
-        file_path = "..\\..\\session_data\\temp\\generated_questions.json" 
+        file_path = "session_data\\temp\\quiz_data.json" 
 
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(questions.model_dump_json(), f, ensure_ascii=True, indent=4)
+            json.dump(questions.model_dump(), f, ensure_ascii=False, indent=4)
         logger.info(f"Generated questions written to {file_path}")
