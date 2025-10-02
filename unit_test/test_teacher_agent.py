@@ -1,7 +1,7 @@
 import os
 import json
 from services.document_processing.document_management_service import DocumentManagementService
-from services.quiz_generation import QuizGenerationService
+from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.agent.agent_service import TeacherAgent, ParentGraphState
 from services.rag.rag_service import RagService
 from services.rag.llm_service import LLMService
