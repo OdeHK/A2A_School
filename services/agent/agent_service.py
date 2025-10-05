@@ -14,9 +14,7 @@ from services.rag.llm_service import LLMService
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-    
+logger.setLevel(logging.INFO)    
    
 
 # --- Định nghĩa State cho Parent Graph ---

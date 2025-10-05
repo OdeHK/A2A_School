@@ -4,9 +4,10 @@ from pydantic import Field
 from services.models import PlanTaskOutput, PlanTaskOutputList, QuizQuestion, QuizQuestionOutput
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
 import json
 import logging
+import regex as re
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,20 @@ def format_docs(documents) -> str:
         return ""
     return "\n\n".join([doc.page_content for doc in documents])
 
+class CustomPydanticOutputParser(PydanticOutputParser):
+    def parse(self, text: str) -> Any:
+        # Check whether the text is wrapped in triple backticks
+        if not (text.startswith("```") and text.endswith("```")):
+            # If not, wrap it in triple backticks
+            text = f"```json\n{text}\n```"
+
+        # Add double backslashes in latex expressions
+        text = re.sub(
+            r'\$(.+?)\$',
+            lambda m: "$" + m.group(1).replace("\\", "\\\\") + "$",
+            text
+        )
+        return super().parse(text)
 
 # ====== Graph State =========
 class QuizGenerationState(TypedDict):
@@ -195,37 +210,35 @@ class QuizGenerationService:
                         
                         quiz_generation_prompt = ChatPromptTemplate.from_messages([
                             ("system", "Reasoning: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
-                            ("human", "# Instructions\n"
+                            ("human", "Instructions\n"
                                       "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
                                       "Relevant content for this section is provided in the RETRIEVED_CONTEXT.\n\n"
-                                      "# Content Guidelines:\n"
                                       "Stick strictly to the RETRIEVED_CONTEXT. Do not introduce any new information or assumptions beyond what is provided.\n\n"
-                                      "# Question Requirements:\n"
+                                      "Question Requirements:\n"
                                       "{requirements}\n\n"
-                                      "# Question Types:\n"
-                                      "- 'multiple_choice': Must include 'options' (array of choices), 'answer' (correct answer), and 'answer_explanation' (explanation why the answer is correct)\n"
-                                      "- 'essay': Only needs 'title' field, no options or answer required\n\n"
-                                      "For multiple choice questions:\n"
-                                      "- Include a concise and unambiguous explanation: Why the correct answer is valid and why each incorrect option is flawed.\n\n"
-                                      "# Section context:\n"
-                                      "{section_context}\n"
-                                      "# RETRIEVED_CONTEXT:\n"
-                                      "{context}\n\n"
-                                      "# Format output instruction: Just put it in triple backticks (```), DO NOT add json, python or any label after the backticks: \n {format_instructions}\n"
+                                      "Response Formats:\n {format_instructions}\n"
                                       "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n"
-                                      "Your response must be written in Vietnamese\n")
+                                      "Your response must be written in Vietnamese\n"
+                                      "SECTION_CONTEXT:\n"
+                                      "{section_context}\n"
+                                      "RETRIEVED_CONTEXT:\n"
+                                      "{context}\n\n")
                         ])
                         
                         logger.info(f"Generating {task.number_of_questions} questions using LLM")
-                        chain = quiz_generation_prompt | self.rag_service.llm_service.llm | quiz_parser
-                        quiz_result = chain.invoke({
+                        prompt_input = {
                             "context": format_docs(relevant_docs),
                             "num_questions": task.number_of_questions,
                             "requirements": task.question_requirements,
                             "section_title": task.section_title,
                             "section_context": task.query_string,
                             "format_instructions": quiz_parser.get_format_instructions()
-                        })
+                        }
+                        prompt_result = quiz_generation_prompt.invoke(prompt_input)
+                        llm_result = self.rag_service.llm_service.llm.invoke(prompt_result)
+                        logger.info(f"LLM raw output before parsing: {llm_result.__repr__()}")  # In ra dữ liệu thô
+
+                        quiz_result = quiz_parser.invoke(llm_result)
                         logger.info(f"LLM raw output: {quiz_result}")
 
                         generated_questions.questions.extend(quiz_result.questions)
