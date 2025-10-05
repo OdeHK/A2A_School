@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import random
 from typing import List, Tuple, TypedDict, Optional
 from pathlib import Path
 from apiclient import discovery
@@ -168,6 +169,15 @@ class TeacherAgent:
                     toc_data=toc_string
                 )
                 logger.info(f"Quiz generation result: {result}")
+
+                # Random hint messages for next step
+                next_step_hint_list = [
+                    "Bạn có muốn mình giúp bạn tạo form từ bộ câu hỏi này không? Mình có thể giúp bạn tạo Google Form từ bộ câu hỏi này.",
+                    "Nếu bạn muốn tạo form từ bộ câu hỏi này, mình sẵn sàng giúp bạn.",
+                    "Mình có thể giúp bạn tạo Google Form từ bộ câu hỏi này, bạn có muốn không?",
+                ]
+                next_step_hint = random.choice(next_step_hint_list)
+                result += f"\n\n{next_step_hint}"
                 return {"answer": result}
             except Exception as e:
                 logger.error(f"Error in generate_quiz_set tool: {str(e)}")
