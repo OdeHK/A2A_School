@@ -2,11 +2,16 @@ import json
 import os
 import logging
 from typing import List, Tuple, TypedDict, Optional
+from pathlib import Path
+from apiclient import discovery
+from httplib2 import Http
+from oauth2client import client, file, tools
 from langgraph.graph import StateGraph, END
 
 from services.document_processing import document_library
 from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
 from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.document_processing.document_management_service import DocumentManagementService
@@ -167,6 +172,25 @@ class TeacherAgent:
             except Exception as e:
                 logger.error(f"Error in generate_quiz_set tool: {str(e)}")
                 return {"answer": f"Đã xảy ra lỗi khi tạo đề: {str(e)}"}
+        
+        def create_form_node(state: ParentGraphState):
+            """Node chính để tạo Google Form từ quiz data."""
+            logger.info("--- 2e. EXECUTING: Subgraph Create Google Form ---")
+            
+            # Kiểm tra điều kiện trước khi tạo form
+            validation_result = self._validate_form_creation_prerequisites()
+            if validation_result is not None:
+                return {"answer": validation_result}
+            
+            # Tạo Google Form
+            try:
+                form_link = self._create_google_form()
+                return {"answer": f"Mình đã tạo xong Google Form cho bạn rồi nhé! Đây là đường dẫn của form: \n{form_link}"}
+            except Exception as e:
+                error_msg = f"Error creating Google Form: {str(e)}"
+                logger.error(error_msg)
+                return {"answer": "Đã xảy ra lỗi, vui lòng thử lại sau."}
+
 
         # --- Xây dựng và Compile Parent Graph ---
         workflow = StateGraph(ParentGraphState)
@@ -174,6 +198,7 @@ class TeacherAgent:
         workflow.add_node("summarizer", summarizer_node) 
         workflow.add_node("rag_qa", rag_qa_node)
         workflow.add_node("quiz_generation", quiz_generation_node)
+        workflow.add_node("create_form", create_form_node)
         workflow.set_entry_point("router")
 
         workflow.add_conditional_edges(
@@ -182,17 +207,135 @@ class TeacherAgent:
             {
                 "summarizer": "summarizer",
                 "quiz_generation": "quiz_generation",
+                "create_form": "create_form",
                 "rag_qa": "rag_qa"
             }
         )
 
         workflow.add_edge("summarizer", END)
         workflow.add_edge("quiz_generation", END)
+        workflow.add_edge("create_form", END)
         workflow.add_edge("rag_qa", END)
 
         # Compile đồ thị
         logger.info("TeacherAgent workflow graph compiled.")
         return workflow.compile()
+
+    def _validate_form_creation_prerequisites(self) -> Optional[str]:
+        """
+        Kiểm tra các điều kiện cần thiết trước khi tạo Google Form.
+        
+        Returns:
+            str: Thông báo lỗi nếu có, None nếu tất cả điều kiện đều thỏa mãn
+        """
+        temp_folder = Path("session_data/temp")
+        quiz_data_path = temp_folder / "quiz_data.json"
+        
+        # Kiểm tra file quiz_data.json có tồn tại không
+        if not quiz_data_path.exists():
+            logger.warning("File quiz_data.json không tồn tại. Vui lòng tạo đề trước.")
+            return "Trước khi tạo bộ đề kiểm tra, mình sẽ giúp bạn tạo bộ câu hỏi nhé! Bạn muốn tạo bộ câu hỏi về chủ đề gì?"
+        
+        # Kiểm tra người dùng đã đăng nhập chưa
+        auth_error = self._check_google_authentication()
+        if auth_error:
+            return auth_error
+            
+        return None
+
+    def _check_google_authentication(self) -> Optional[str]:
+        """
+        Kiểm tra trạng thái đăng nhập Google của người dùng.
+        
+        Returns:
+            str: Thông báo lỗi nếu chưa đăng nhập, None nếu đã đăng nhập
+        """
+        temp_folder = Path("session_data/temp")
+        token_path = temp_folder / "token.json"
+        
+        store = file.Storage(token_path)
+        try:
+            creds = store.get()
+        except Exception:
+            creds = None
+            
+        if not creds:
+            logger.warning("Người dùng chưa đăng nhập.")
+            return "Bạn hãy đăng nhập vào tài khoản Google và cấp quyền cho ứng dụng nhé!"
+        
+        # TODO: Kiểm tra token hết hạn chưa, nếu hết hạn thì yêu cầu đăng nhập lại
+        return None
+
+    def _create_google_form(self) -> str:
+        """
+        Tạo Google Form hoàn chỉnh từ quiz data.
+        
+        Returns:
+            str: Link của Google Form đã tạo
+            
+        Raises:
+            Exception: Nếu có lỗi trong quá trình tạo form
+        """
+        temp_folder = Path("session_data/temp")
+        quiz_data_path = temp_folder / "quiz_data.json"
+        token_path = temp_folder / "token.json"
+        
+        # 1. Chuyển đổi quiz data thành Google Form schema
+        try:
+            converter = QuizToGoogleFormConverter()
+            google_form_schema = converter.convert_file_to_google_form(input_file=str(quiz_data_path))
+        except Exception as e:
+            error_msg = f"Error converting quiz to Google Form schema: {str(e)}"
+            logger.error(error_msg)
+            raise Exception("Đã xảy ra lỗi khi chuyển đổi bộ câu hỏi sang dạng form. Vui lòng thử lại sau.")
+        
+        # 2. Xây dựng Google Forms service với authentication
+        store = file.Storage(token_path)
+        creds = store.get()
+        
+        DISCOVERY_DOC = "https://forms.googleapis.com/$discovery/rest?version=v1"
+        form_service = discovery.build(
+            "forms",
+            "v1",
+            http=creds.authorize(Http()),
+            discoveryServiceUrl=DISCOVERY_DOC,
+            static_discovery=False,
+        )
+        
+        # 3. Tạo form ban đầu
+        result = form_service.forms().create(body=google_form_schema.get("form_creation")).execute()
+        form_id = result['formId']
+        logger.info(f"Created form with ID: {form_id}")
+        
+        # 4. Thêm câu hỏi vào form
+        form_service.forms().batchUpdate(
+            formId=form_id, 
+            body=google_form_schema.get("items_requests")
+        ).execute()
+        logger.info(f"Added questions to form ID: {form_id}")
+        
+        # 5. Publish form và cho phép nhận phản hồi
+        publish_settings_body = {
+            "publishSettings": {
+                "publishState": {
+                    "isPublished": True,
+                    "isAcceptingResponses": True
+                }
+            }
+        }
+        
+        form_service.forms().setPublishSettings(
+            formId=form_id,
+            body=publish_settings_body
+        ).execute()
+        logger.info(f"Published form ID: {form_id} and set to accept responses")
+        
+        # 6. Lấy link phản hồi của form
+        form_result = form_service.forms().get(formId=form_id).execute()
+        link_form = form_result['responderUri']
+        logger.info(f"Created Google Form: {link_form}")
+        
+        return link_form
 
     def handle_chat_query(self, query: str, chat_history: Optional[List] = None, selected_document_id: Optional[str] = None) -> str:
         """
@@ -228,6 +371,8 @@ class TeacherAgent:
         except Exception as e:
             logger.error(f"Error handling chat query: {str(e)}")
             return "Đã xảy ra lỗi khi xử lý yêu cầu."
+        
+
 
 # --- Logic quyết định rẽ nhánh ---
 def decide_route(state: ParentGraphState):
