@@ -174,6 +174,29 @@ def add_guide_message_for_create_form(chat_history):
     chat_history.append(gr.ChatMessage(role="assistant", content=guide_msg))
     return chat_history
 
+# Function to handle Google Authentication
+def handle_google_authentication():
+    """Handle Google Authentication and open sign-in website."""
+    try:
+        # Get authentication result with user name
+        auth_result, user_name = ui_service.open_sign_in_website()
+        logger.info("Google authentication process completed.")
+
+        # Check if authentication was successful
+        if auth_result:
+            return gr.Button(value=user_name, interactive=False)
+        else:
+            # Authentication failed
+            logger.error(f"Authentication failed: {auth_result}")
+            gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
+            return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+            
+    except Exception as e:
+        logger.error(f"Error during Google authentication: {str(e)}")
+        gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
+        return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+        
+
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     with gr.Sidebar(open=False):
         side_bar_title = gr.Markdown(value="**Developer Setting**")
@@ -242,6 +265,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
                 create_form_btn = gr.Button(value="Chuyển đổi Quiz sang Google Form")
+                google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google")
 
     # Process file upload
     file_upload_btn.upload(
@@ -295,6 +319,13 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         fn=create_google_form_from_quiz,
         inputs=[chatbot],
         outputs=[chatbot]
+    )
+
+    # Sign in to Google
+    google_auth_btn.click(
+        fn=handle_google_authentication,
+        inputs=[],
+        outputs=[google_auth_btn]
     )
 
     # Thêm event handlers cho dropdowns
