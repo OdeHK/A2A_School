@@ -6,8 +6,12 @@ This service acts as a bridge between the UI and the core RAG services.
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
+from apiclient import discovery
+from httplib2 import Http
+from oauth2client import client, file, tools
 
-from services.quiz_generation import QuizGenerationService
+from services.quiz_generation.quiz_generation import QuizGenerationService
+from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
@@ -216,7 +220,7 @@ class UIIntegrationService:
             logger.error(error_msg)
             return f"❌ {error_msg}"
     
-    def handle_chat_query(self, query: str, chat_history: List) -> List:
+    def handle_chat_query(self, query: str, chat_history: List) -> str:
         """
         Handle chat queries using Agent Service.
         
@@ -224,11 +228,11 @@ class UIIntegrationService:
             query: User query
             chat_history: Current chat history
         Returns:
-            List: Updated chat history
+            Response string from the agent
         """
         try:
             if not query or not query.strip():
-                return chat_history
+                return "🤖 Vui lòng nhập câu hỏi."
             
             # Check if agent service is ready
             if not self.agent_service:
@@ -237,21 +241,91 @@ class UIIntegrationService:
                 
                 if not self.agent_service:
                     error_response = "🤖 Dịch vụ AI chưa sẵn sàng. Vui lòng thử lại sau."
-                    chat_history.append((query, error_response))
-                    return chat_history
+                    return error_response
             
             # Use agent service to handle the chat
             # TODO: Pass selected_document_id when agent_service is updated to support it
-            response, updated_history = self.agent_service.handle_chat_query(query, chat_history)
+            response = self.agent_service.handle_chat_query(query, chat_history)
             
-            return updated_history
+            return response
             
         except Exception as e:
             error_msg = f"Error in chat query: {str(e)}"
             logger.error(error_msg)
-            chat_history.append((query, f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
-            return chat_history
-    
+            return f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"
+
+    def create_google_form_from_quiz(self) -> str:
+
+        temp_folder = Path("session_data/temp")
+        input_file = temp_folder / "quiz_data.json"
+        converter = QuizToGoogleFormConverter()
+        # TODO: Kiểm tra nội dung của file đã có chưa, nếu trống thì báo lỗi
+
+        try: 
+            google_form_schema = converter.convert_file_to_google_form(input_file=str(input_file))
+        except Exception as e:
+            error_msg = f"Error converting quiz to Google Form schema: {str(e)}"
+            logger.error(error_msg)
+            return f"Có lỗi xảy ra khi tạo Google Form. Bạn hãy thử tạo lại bộ đề kiểm tra nhé!"
+        
+        SCOPES = "https://www.googleapis.com/auth/forms.body"
+        DISCOVERY_DOC = "https://forms.googleapis.com/$discovery/rest?version=v1"
+        try:
+            store = file.Storage(temp_folder / "token.json")
+            creds = None
+            if not creds or creds.invalid:
+                flow = client.flow_from_clientsecrets(temp_folder / "client_secret_vscode.json", SCOPES)
+                creds = tools.run_flow(flow, store)
+
+            form_service = discovery.build(
+                "forms",
+                "v1",
+                http=creds.authorize(Http()),
+                discoveryServiceUrl=DISCOVERY_DOC,
+                static_discovery=False,
+            )
+
+            # Creates the initial form
+            result = form_service.forms().create(body=google_form_schema.get("form_creation")).execute()
+            logger.info(f"Created form with ID: {result['formId']}")
+            
+            # Adds the question to the form
+            question_setting = (
+                form_service.forms()
+                .batchUpdate(formId=result["formId"], body=google_form_schema.get("items_requests"))
+                .execute()
+            )
+            logger.info(f"Added questions to form ID: {result['formId']}")
+
+            # Set form to be published and accepting responses
+            publish_settings_body = {
+                "publishSettings": {
+                    "publishState": {
+                    "isPublished": True,
+                    "isAcceptingResponses": True
+                    }
+                }
+            }
+            published_settings = (
+                form_service.forms().setPublishSettings(
+                    formId=result["formId"],
+                    body=publish_settings_body
+                ).execute()
+            ) 
+            logger.info(f"Published form ID: {result['formId']} and set to accept responses")
+
+            # Prints the result to show the question has been added
+            form_result = form_service.forms().get(formId=result["formId"]).execute()
+            link_form = form_result['responderUri']
+            logger.info(f"Created Google Form: {link_form}")
+
+            return (f"Mình đã tạo xong Google Form cho bạn rồi nhé! Đây là đường dẫn của form: \n{link_form}")
+        except Exception as e:
+            error_msg = f"Error creating Google Form: {str(e)}"
+            logger.error(error_msg)
+            return f"Có lỗi xảy ra khi đăng nhập vào tài khoản Google. Bạn hãy thử lại nhé!"
+
+
     def set_selected_document(self, selected_filename: str) -> str:
         """
         Set the selected document and convert filename to document_id.

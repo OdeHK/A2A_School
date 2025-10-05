@@ -46,7 +46,7 @@ class HybridSummarizerStrategy:
             model_name=embedding_model,
             cache_folder=cache_folder,
             model_kwargs={"trust_remote_code": True,
-                          "device": "auto"}
+                          "device": None}
         )
         
         # Token management (no LLM needed)
