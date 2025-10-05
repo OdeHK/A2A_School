@@ -128,12 +128,12 @@ Phân loại user_request theo quy tắc sau:
 - summarizer: nếu yêu cầu là tóm tắt nội dung của một tài liệu, sách, chương, mục.
 - quiz_generation: nếu yêu cầu sinh câu hỏi, tạo quiz, hoặc đề kiểm tra dựa trên tài liệu.
 - rag_qa: nếu yêu cầu là trả lời câu hỏi từ tài liệu đã tải lên (ví dụ: "Trong chương 1 sách X nói gì về Y?")
-
+- create_form: nếu yêu cầu tạo Google Form, chuyển đổi quiz sang form, hoặc tạo form từ bộ câu hỏi đã có.
 
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
-Câu trả lời của bạn BẮT BUỘC chỉ được là MỘT trong ba chuỗi sau: summarizer, quiz_generation, rag_qa.
+Câu trả lời của bạn BẮT BUỘC chỉ được là MỘT trong bốn chuỗi sau: summarizer, quiz_generation, rag_qa, create_form.
 Không thêm bất kỳ văn bản, giải thích, hay ký tự nào khác.
 </OUTPUT_GUIDELINES>
 """
