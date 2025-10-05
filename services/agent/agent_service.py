@@ -1,22 +1,20 @@
 import json
 import os
 import logging
-from typing import List, TypedDict, Optional
+from typing import List, Tuple, TypedDict, Optional
 from langgraph.graph import StateGraph, END
 
 from services.document_processing import document_library
 from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.rag.rag_service import RagService
-from services.quiz_generation import QuizGenerationService
+from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.document_processing.document_management_service import DocumentManagementService
 from services.rag.llm_service import LLMService
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-    
+logger.setLevel(logging.INFO)    
    
 
 # --- Định nghĩa State cho Parent Graph ---
@@ -164,9 +162,8 @@ class TeacherAgent:
                     user_request=user_request,
                     toc_data=toc_string
                 )
-                final_questions = result.get("final_questions", [])
-                logger.info(f"Quiz generation result: {final_questions}")
-                return {"answer": '\n'.join([q["question"] for q in final_questions]) if final_questions else "Không thể tạo câu hỏi."}
+                logger.info(f"Quiz generation result: {result}")
+                return {"answer": result}
             except Exception as e:
                 logger.error(f"Error in generate_quiz_set tool: {str(e)}")
                 return {"answer": f"Đã xảy ra lỗi khi tạo đề: {str(e)}"}
@@ -197,7 +194,7 @@ class TeacherAgent:
         logger.info("TeacherAgent workflow graph compiled.")
         return workflow.compile()
 
-    def handle_chat_query(self, query: str, chat_history: Optional[List] = None, selected_document_id: Optional[str] = None):
+    def handle_chat_query(self, query: str, chat_history: Optional[List] = None, selected_document_id: Optional[str] = None) -> str:
         """
         Handle a chat query by routing to the appropriate subgraph.
         Args:
@@ -206,27 +203,10 @@ class TeacherAgent:
             selected_document_id: Selected document ID from UI.
         
         Returns:
-            A tuple of (answer string, updated chat history list).
+            The response string from the agent.
         """
         
         try:
-        #     if not query or not query.strip():
-        #         return "Xin chào! Tôi có thể giúp gì cho bạn?", chat_history or []
-            
-        #     # Determine document_id to use
-        #     if not selected_document_id:
-        #         try:
-        #             document_id_dict = self.document_management_service.get_document_id_dict()
-        #             first_document_id = next(iter(document_id_dict))
-        #             document_id = first_document_id
-        #             logger.info(f"No selected_document_id provided, using first document: {document_id}")
-        #         except (StopIteration, AttributeError) as e:
-        #             logger.warning(f"No documents available in document_id_dict: {str(e)}")
-        #             return "Không có tài liệu nào được tải lên. Vui lòng tải tài liệu trước khi đặt câu hỏi.", chat_history or []
-        #     else:
-        #         document_id = selected_document_id
-        #         logger.info(f"Using provided selected_document_id: {document_id}")
-            
 
             # Prepare state for workflow
             state: ParentGraphState = {
@@ -243,15 +223,11 @@ class TeacherAgent:
             # Get the answer from result
             answer = result.get("answer", "Không thể xử lý yêu cầu.")
             
-            # Update chat history
-            updated_history = chat_history or []
-            updated_history.append((query, answer))
-            
-            return answer, updated_history
-        
+            return answer
+
         except Exception as e:
             logger.error(f"Error handling chat query: {str(e)}")
-            return "Đã xảy ra lỗi khi xử lý yêu cầu.", chat_history or []
+            return "Đã xảy ra lỗi khi xử lý yêu cầu."
 
 # --- Logic quyết định rẽ nhánh ---
 def decide_route(state: ParentGraphState):
