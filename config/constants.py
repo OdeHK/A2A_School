@@ -32,54 +32,20 @@ class ModelConstants:
         "huggingface": "Alibaba-NLP/gte-multilingual-base"
     }
     
-    HUGGINGFACE_CACHE_DIR = "./.cache/huggingface"
+    HUGGINGFACE_CACHE_DIR = "session_data/temp/huggingface_cache"
 
     # === Model limitations ===
     MAX_CONTEXT_LENGTHS = {
         "openai/gpt-oss-20b": 128000
     }
     
-    
-    # === Temperature ranges ===
-    MIN_TEMPERATURE = 0.0
-    MAX_TEMPERATURE = 2.0
-    DEFAULT_TEMPERATURE = 0.2
-    
-    # === Token limits ===
-    DEFAULT_MAX_TOKENS = 4096
-    MIN_MAX_TOKENS = 100
-    MAX_MAX_TOKENS = 8192
+
 
 
 class UIConstants:
     """Hằng số liên quan đến giao diện người dùng"""
     
-    # === App metadata ===
-    APP_NAME = "AI Teacher Assistant"
-    APP_VERSION = "1.0.0"
-    APP_DESCRIPTION = "Trợ lý AI thông minh cho giáo viên"
-    
-    # === UI Messages ===
-    MESSAGES = {
-        "welcome": "Chào mừng đến với AI Teacher Assistant! 👋",
-        "api_key_required": "⚠️ Vui lòng cung cấp API key để sử dụng.",
-        "llm_initialized": "✅ LLM đã được khởi tạo thành công!",
-        "file_uploaded": "✅ File đã được upload và xử lý thành công!",
-        "error_occurred": "❌ Có lỗi xảy ra: {error}",
-        "processing": "🔄 Đang xử lý...",
-        "no_documents": "📄 Chưa có tài liệu nào được upload.",
-        "session_started": "🚀 Phiên làm việc mới đã được tạo!"
-    }
-    
-    # === UI Components ===
-    SIDEBAR_WIDTH = 300
-    CHAT_HEIGHT = 600
-    MAX_CHAT_HISTORY = 50
-    
-    # === File upload constraints ===
-    MAX_FILE_SIZE_MB = 50
-    MAX_FILES_PER_UPLOAD = 10
-    
+   
     # === Gradio theme colors ===
     THEME_COLORS = {
         "primary": "#2563eb",
@@ -122,16 +88,6 @@ class FileConstants:
         "LLM": "Sử dụng LLM phân chia các đoạn văn và tiền xử lý",
     }
     
-    # === Default chunk settings ===
-    DEFAULT_CHUNK_SIZE = 1000
-    DEFAULT_CHUNK_OVERLAP = 200
-    MIN_CHUNK_SIZE = 100
-    MAX_CHUNK_SIZE = 4000
-    
-    # === File size limits (in bytes) ===
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-    MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB total
-
 
 # === Document Repository folder names ===
 class DocumentRepositoryConstants:
