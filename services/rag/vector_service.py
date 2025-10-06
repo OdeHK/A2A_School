@@ -6,9 +6,10 @@ import logging
 from config.constants import DatabaseConstants
 from .embedding_service import EmbeddingService, create_google_embedding_service, create_nvidia_embedding_service
 from .embedding_service import EmbeddingType
+from config.settings import get_settings
 
-# Configure logging
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 class VectorService:
     """Quản lý vector store dùng LangChain với embedding service"""
@@ -60,7 +61,18 @@ class VectorService:
         """Thêm tài liệu vào vector store"""
         if not self.vectorstore:
             return self.init_vectorstore(documents)
-        self.vectorstore.add_documents(documents)
+        
+        batch_size = settings.embedding_chunk_batch_size
+        # Add documents in batches if specified
+        if batch_size > 0:
+            for i in range(0, len(documents), batch_size):
+                self.vectorstore.add_documents(documents[i: i+batch_size])
+                logger.info(f"Added documents batch {i // batch_size + 1}")
+            if len(documents) % batch_size != 0:
+                self.vectorstore.add_documents(documents[(len(documents) // batch_size) * batch_size:])
+                logger.info(f"Added remaining documents")
+        else:
+            self.vectorstore.add_documents(documents)
         return self.vectorstore
     
     def similarity_search(self, query: str, k: int = 4):
