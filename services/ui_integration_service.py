@@ -325,6 +325,51 @@ class UIIntegrationService:
             logger.error(error_msg)
             return f"Có lỗi xảy ra khi đăng nhập vào tài khoản Google. Bạn hãy thử lại nhé!"
 
+    # Sign in to Google account 
+    def open_sign_in_website(self) -> Tuple[bool, str]:
+        """
+        Open the Google sign-in website for authentication.
+        
+        Returns:
+            boolean: True if the user successfully signed in, False otherwise
+            str: the Google account name if sign-in is successful,
+        """
+        try:
+            temp_folder = Path("session_data/temp")
+            SCOPES = [
+                "https://www.googleapis.com/auth/forms.body",
+                "https://www.googleapis.com/auth/userinfo.profile"
+            ]
+            store = file.Storage(temp_folder / "token.json")
+            try:
+                creds = store.get()
+            except Exception:
+                creds = None
+
+            if not creds or creds.invalid:
+                flow = client.flow_from_clientsecrets(temp_folder / "client_secret_vscode.json", SCOPES)
+                creds = tools.run_flow(flow, store)
+            
+            # Lấy thông tin người dùng từ Google
+            try:
+                oauth2_service = discovery.build('oauth2', 'v2', http=creds.authorize(Http()))
+                user_info = oauth2_service.userinfo().get().execute()
+                user_name = user_info.get('name', 'Người dùng Google')
+                user_email = user_info.get('email', '')
+                
+                logger.info(f"Google authentication successful for user: {user_name} ({user_email})")
+                return (True, user_name)
+                
+            except Exception as e:
+                logger.warning(f"Could not retrieve user info: {str(e)}")
+                logger.info("Google authentication successful")
+                return (True, "Người dùng Google")
+                
+        except Exception as e:
+            error_msg = f"Error during Google authentication: {str(e)}"
+            logger.error(error_msg)
+            return (False, f"Lỗi đăng nhập Google: {error_msg}")
+
 
     def set_selected_document(self, selected_filename: str) -> str:
         """

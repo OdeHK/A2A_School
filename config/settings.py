@@ -38,65 +38,24 @@ class Settings(BaseSettings):
         description="Default model name"
     )
     
-    max_tokens: int = Field(
-        default=15000,
-        description="Maximum tokens for LLM response"
-    )
-    
-    temperature: float = Field(
-        default=0.1,
-        ge=0.0,
-        le=2.0,
-        description="Temperature for LLM creativity"
-    )
-    
-    # === Vector Store Configuration ===
-    vector_store_type: str = Field(
-        default="chroma",
-        description="Vector store type (chroma, faiss, pinecone)"
-    )
-    
-    embedding_model: str = Field(
-        default="models/gemini-embedding-001",
-        description="Embedding model name"
-    )
-    
-    chunk_size: int = Field(
-        default=3000,
-        description="Document chunk size for splitting"
-    )
-    
-    chunk_overlap: int = Field(
-        default=200,
-        description="Overlap between document chunks"
-    )
-    
-    # === File and Directory Paths ===
-    documents_dir: str = Field(
-        default="./documents",
-        description="Directory to store uploaded documents"
-    )
-    
+    # === Vector Database Configuration
     vector_db_dir: str = Field(
         default="./vector_db",
         description="Directory to store vector database"
     )
     
+    # === Embedding Configuration
+    embedding_chunk_batch_size: int = Field(
+        default=20,
+        description="Batch size used when adding embedding chunks to the vector store"
+    )
+
     logs_dir: str = Field(
         default="./logs",
         description="Directory to store application logs"
     )
     
     # === UI Configuration ===
-    app_title: str = Field(
-        default="AI Teacher Assistant",
-        description="Application title"
-    )
-    
-    app_description: str = Field(
-        default="Trợ lý AI thông minh cho giáo viên",
-        description="Application description"
-    )
     
     max_file_size_mb: int = Field(
         default=25,
@@ -108,33 +67,6 @@ class Settings(BaseSettings):
         description="Allowed file types for upload"
     )
     
-    # === Google Services Configuration ===
-    google_credentials_file: Optional[str] = Field(
-        default=None,
-        description="Path to Google service account credentials JSON"
-    )
-    
-    google_drive_folder_id: Optional[str] = Field(
-        default=None,
-        description="Google Drive folder ID for document storage"
-    )
-    
-    # === Database Configuration ===
-    database_url: str = Field(
-        default="sqlite:///./teacher_assistant.db",
-        description="Database URL for storing sessions and metadata"
-    )
-    
-    # === Logging Configuration ===
-    log_level: str = Field(
-        default="INFO",
-        description="Logging level (DEBUG, INFO, WARNING, ERROR)"
-    )
-    
-    enable_debug: bool = Field(
-        default=False,
-        description="Enable debug mode"
-    )
     
     class Config:
         env_file = ".env"
@@ -146,11 +78,6 @@ class Settings(BaseSettings):
         """Lấy đường dẫn đầy đủ đến thư mục vector database"""
         os.makedirs(self.vector_db_dir, exist_ok=True)
         return self.vector_db_dir
-    
-    def get_documents_path(self) -> str:
-        """Lấy đường dẫn đầy đủ đến thư mục documents"""
-        os.makedirs(self.documents_dir, exist_ok=True)
-        return self.documents_dir
     
     def get_logs_path(self) -> str:
         """Lấy đường dẫn đầy đủ đến thư mục logs"""
@@ -202,7 +129,6 @@ def validate_settings():
     settings = get_settings()
     
     # Tạo các thư mục cần thiết
-    settings.get_documents_path()
     settings.get_vector_db_path() 
     settings.get_logs_path()
     
