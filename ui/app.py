@@ -143,36 +143,29 @@ def handle_chat_input(chat_history):
         logger.error(error_msg)
         chat_history.append(gr.ChatMessage(role="assistant", content=f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
         return chat_history
-    
-# Function to handle Google Form creation from Quiz
 
-def create_google_form_from_quiz(chat_history):
-    """
-    Handle Google Form creation from quiz data file.
-    """
+# Function to handle Google Authentication
+def handle_google_authentication():
+    """Handle Google Authentication and open sign-in website."""
     try:
-        # small delay so user can read the previous assistant message
-        time.sleep(2.0)
+        # Get authentication result with user name
+        auth_result, user_name = ui_service.open_sign_in_website()
+        logger.info("Google authentication process completed.")
 
-        status_msg = ui_service.create_google_form_from_quiz()  
-
-        # Append the service response to the chat history
-        chat_history.append(gr.ChatMessage(role="assistant", content=str(status_msg)))
-        return chat_history
-    
+        # Check if authentication was successful
+        if auth_result:
+            return gr.Button(value=user_name, interactive=False)
+        else:
+            # Authentication failed
+            logger.error(f"Authentication failed: {auth_result}")
+            gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
+            return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+            
     except Exception as e:
-        err = f"Error creating Google Form: {e}"
-        logger.error(err)
-        chat_history.append(gr.ChatMessage(role="assistant", content=err))
-        return chat_history
-
-def add_guide_message_for_create_form(chat_history):
-    """Add a guide message before creating Google Form from quiz."""
-    user_msg = ("Hãy tạo Google Form từ bộ đề kiểm tra đã được tạo.")
-    guide_msg = ("Bạn hãy đăng nhập vào tài khoản Google của mình trước khi tạo Form ở màn hình đăng nhập tiếp theo...")
-    chat_history.append(gr.ChatMessage(role="user", content=user_msg))
-    chat_history.append(gr.ChatMessage(role="assistant", content=guide_msg))
-    return chat_history
+        logger.error(f"Error during Google authentication: {str(e)}")
+        gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
+        return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+        
 
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     with gr.Sidebar(open=False):
@@ -241,7 +234,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
 
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
-                create_form_btn = gr.Button(value="Chuyển đổi Quiz sang Google Form")
+                google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google")
 
     # Process file upload
     file_upload_btn.upload(
@@ -286,15 +279,11 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[chatbot]
     )
 
-    # Create Google Form from Quiz
-    create_form_btn.click(
-        fn=add_guide_message_for_create_form,
-        inputs=[chatbot],
-        outputs=[chatbot]
-    ).then(
-        fn=create_google_form_from_quiz,
-        inputs=[chatbot],
-        outputs=[chatbot]
+    # Sign in to Google
+    google_auth_btn.click(
+        fn=handle_google_authentication,
+        inputs=[],
+        outputs=[google_auth_btn]
     )
 
     # Thêm event handlers cho dropdowns

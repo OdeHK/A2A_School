@@ -246,15 +246,7 @@ class QuizGenerationService:
                         
                 except Exception as e:
                     logger.error(f"Error generating questions for {task.section_title}: {e}")
-                    # Create fallback question
-                    fallback_question = QuizQuestion(
-                        type="multiple_choice",
-                        title=f"Câu hỏi về {task.section_title}",
-                        options=["Lỗi khi tạo câu hỏi", "Vui lòng thử lại", "Không có dữ liệu", "Lỗi hệ thống"],
-                        answer="Vui lòng thử lại",
-                        answer_explanation=f"Có lỗi xảy ra khi tạo câu hỏi cho phần {task.section_title}"
-                    )
-                    generated_questions.questions.append(fallback_question)
+                    
                 
             logger.info(f"MAP GENERATE hoàn thành: {len(generated_questions.questions)} câu hỏi")
             logger.info("=== MAP GENERATE NODE END ===")
@@ -268,13 +260,15 @@ class QuizGenerationService:
             generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
             logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
-            # Convert to human-readable list
-            final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
+            if generated_questions.questions:
+                # Convert to human-readable list
+                final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
             
-            # Write to file for record-keeping
-            QuizGenerationService._write_questions_to_file(questions=generated_questions)
-            logger.info("Written generated questions to file")
-
+                # Write to file for record-keeping
+                QuizGenerationService._write_questions_to_file(questions=generated_questions)
+                logger.info("Written generated questions to file")
+            else:
+                final_questions = "Hiện tại không có câu hỏi nào được tạo ra. Bạn có thể thử lại hoặc điều chỉnh yêu cầu"
             
             logger.info("=== AGGREGATE NODE END ===")
             return {

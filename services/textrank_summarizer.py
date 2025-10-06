@@ -8,9 +8,11 @@ import logging
 import numpy as np
 import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from services.token_manager import TokenManager, create_token_manager
+from config.settings import get_settings
+from config.constants import ModelConstants
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ class HybridSummarizerStrategy:
         # TextRank components
         self.embeddings = HuggingFaceEmbeddings(
             model_name=embedding_model,
-            cache_folder=cache_folder,
+            cache_folder=ModelConstants.HUGGINGFACE_CACHE_DIR,
             model_kwargs={"trust_remote_code": True,
                           "device": None}
         )
