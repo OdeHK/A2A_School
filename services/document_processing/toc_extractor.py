@@ -154,7 +154,7 @@ class TOCExtractor:
         toc_generator = self._create_toc_generator(pdf_path)
         bookmark_tree = toc_generator.generate_toc()
 
-        logger.info(f"Extracted: bookmark_tree {bookmark_tree}")
+        #logger.info(f"Extracted: bookmark_tree {bookmark_tree}")
         
         # STEP 2: Convert to structured format with unique IDs
         toc_sections = self._convert_to_toc_sections(bookmark_tree)
