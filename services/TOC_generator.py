@@ -1,16 +1,18 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from PyPDF2 import PdfReader
-import numpy as np
-import networkx as nx
-from sklearn.metrics.pairwise import cosine_similarity
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
 import json
 import os
 import fitz
 import logging
-import re
+from PyPDF2 import PdfReader
+import numpy as np
+import networkx as nx
+
+from config.constants import ModelConstants
+from sklearn.metrics.pairwise import cosine_similarity
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
 from typing import Dict, List, Optional, Any, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,7 +84,7 @@ class SummarizerStrategy(TOCContentStrategy):
         """
         self.embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
-            cache_folder=cache_folder,
+            cache_folder=ModelConstants.HUGGINGFACE_CACHE_DIR,
             model_kwargs={"trust_remote_code": True, 
                           "device": None}
         )
