@@ -50,7 +50,7 @@ MODEL_TOKEN_BUDGETS = {
 class TokenManager:
     """Advanced token management for LLM optimization"""
     
-    def __init__(self, model_name: str = "gemini-2.5-flash-lite", encoding_name: str = "cl100k_base"):
+    def __init__(self, model_name: str = "gpt-oss-20b", encoding_name: str = "cl100k_base"):
         """
         Initialize token manager with specific model configuration
         
