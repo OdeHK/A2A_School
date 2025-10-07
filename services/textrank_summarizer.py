@@ -52,7 +52,7 @@ class HybridSummarizerStrategy:
         )
         
         # Token management (no LLM needed)
-        self.token_manager = token_manager or create_token_manager("gemini-2.5-flash-lite")  # For token calculations only
+        self.token_manager = token_manager or create_token_manager("gpt-oss-20b")  # For token calculations only
         
         # Configuration
         self.embedding_model = embedding_model
