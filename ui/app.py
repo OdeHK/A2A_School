@@ -191,9 +191,19 @@ def authenticate(username, password):
         if username == "admin" and password == "admin":
             return True
         return False
-    
+
+def save_user_name(request: gr.Request):
+    """Save the authenticated user's name for session tracking."""
+    return {"user_name": request.username}
+
+def create_greeting_message(session_state):
+    """Create a greeting message based on the user's name."""
+    user_name = session_state.get("user_name", "Người dùng")
+    gr.Info(message=f"Xin chào, {user_name}!", duration=5, title="Chào mừng")
+
 # Gradio UI setup
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
+    session_state = gr.State()
     with gr.Sidebar(open=False):
         side_bar_title = gr.Markdown(value="**Developer Setting**")
 
@@ -242,7 +252,6 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
             initial_message = [
                 gr.ChatMessage(role="assistant", content="👋 Xin chào! Tôi là trợ lý AI đắc lực của bạn!\n\n🔸 Tôi có thể giúp bạn:\n• Soạn bộ đề kiểm tra một cách chính xác\n• Tổng hợp và phân tích bài làm của học sinh\n• Quản lý lớp học thông qua Google Classroom\n\n**Để bắt đầu:** Upload tài liệu ở bên trái 📂 hoặc kết nối với dịch vụ Google ở bên phải 🔗")
             ]
-            
             chatbot = gr.Chatbot(
                 value=initial_message,
                 type="messages",
@@ -261,6 +270,17 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
                 google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google")
+        
+    # WHen loading the app,
+    demo.load(
+        fn=save_user_name,
+        inputs=[],
+        outputs=[session_state]
+    ).then(
+        fn=create_greeting_message,
+        inputs=[session_state],
+        outputs=[]
+    )
 
     # Process file upload
     file_upload_btn.upload(
@@ -326,4 +346,5 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
-    demo.launch(auth=authenticate)  # Enable authentication with a simple username/password prompt
+    demo.queue()
+    demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
