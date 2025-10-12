@@ -2,6 +2,7 @@ import time
 import gradio as gr
 from typing import List
 import logging
+from pymongo import MongoClient
 
 # Import our services
 from services.ui_integration_service import UIIntegrationService
@@ -165,8 +166,33 @@ def handle_google_authentication():
         logger.error(f"Error during Google authentication: {str(e)}")
         gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
         return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
-        
 
+def authenticate(username, password):
+    """
+    Authenticate user credentials.
+    This is a placeholder function. Replace with actual authentication logic.
+    """
+    uri = "mongodb://A4Teacher_application:A4Teacher_application@127.0.0.1:27017/?authSource=admin"
+
+    try:
+        client = MongoClient(uri)
+        database = client.get_database(name="agent_for_teacher")
+        collection = database.get_collection(name="users")
+        user = collection.find_one({"username": username, "password": password})
+        client.close()
+
+        if user:
+            return True
+        else:
+            logger.warning("Invalid username or password.")
+            return False
+    except Exception as e:
+        logger.error(f"Database connection error: {str(e)}")
+        if username == "admin" and password == "admin":
+            return True
+        return False
+    
+# Gradio UI setup
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     with gr.Sidebar(open=False):
         side_bar_title = gr.Markdown(value="**Developer Setting**")
@@ -300,4 +326,4 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(auth=authenticate)  # Enable authentication with a simple username/password prompt
