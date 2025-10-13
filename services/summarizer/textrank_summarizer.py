@@ -10,7 +10,7 @@ import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from services.token_manager import TokenManager, create_token_manager
+from services.summarizer.token_manager import TokenManager, create_token_manager
 from config.settings import get_settings
 from config.constants import ModelConstants
 
