@@ -137,7 +137,7 @@ class UIIntegrationService:
             logger.error(f"Error initializing agent service: {str(e)}")
             self.agent_service = None
 
-    def process_uploaded_document(self, uploaded_file_path:str): 
+    def process_uploaded_document(self, uploaded_file_path: str, username: str): 
         """Handle file upload from Gradio interface using DocumentManagementService."""
 
         if not self.doc_management_service:
@@ -147,6 +147,7 @@ class UIIntegrationService:
             # Use the document management service to process the uploaded file
             # TODO: Determine which file types to support
             result = self.doc_management_service.process_uploaded_document(file_path=uploaded_file_path,
+                                                                  username=username,
                                                                   rag_service=self.rag_service,
                                                                   extract_toc=True)
             
@@ -235,13 +236,14 @@ class UIIntegrationService:
             logger.error(error_msg)
             return f"❌ {error_msg}"
     
-    def handle_chat_query(self, query: str, chat_history: List) -> str:
+    def handle_chat_query(self, query: str, chat_history: List, username: str) -> str:
         """
         Handle chat queries using Agent Service.
         
         Args:
             query: User query
             chat_history: Current chat history
+            username: Username for user-specific operations
         Returns:
             Response string from the agent
         """
@@ -259,8 +261,7 @@ class UIIntegrationService:
                     return error_response
             
             # Use agent service to handle the chat
-            # TODO: Pass selected_document_id when agent_service is updated to support it
-            response = self.agent_service.handle_chat_query(query, chat_history)
+            response = self.agent_service.handle_chat_query(query, chat_history, username)
             
             return response
             
@@ -386,7 +387,7 @@ class UIIntegrationService:
             return (False, f"Lỗi đăng nhập Google: {error_msg}")
 
 
-    def set_selected_document(self, selected_filename: str) -> str:
+    def set_selected_document(self, selected_filename: str, username: str) -> str:
         """
         Set the selected document and convert filename to document_id.
         
@@ -407,8 +408,8 @@ class UIIntegrationService:
             
             # Convert filename to document_id using document management service
             if self.doc_management_service:
-                document_id_dict = self.doc_management_service.get_document_id_dict()
-                
+                document_id_dict = self.doc_management_service.get_document_id_dict(username=username)
+
                 # Find document_id by matching filename
                 selected_document_id = None
                 for doc_id, filename in document_id_dict.items():

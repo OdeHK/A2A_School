@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 ui_service = UIIntegrationService()
 
 # Function to process uploaded document and add new URL
-def process_uploaded_document(file_path:str):
+def process_uploaded_document(file_path: str, session_state: dict):
     """Process the selected document through RAG pipeline"""
     try:
-        status_msg = ui_service.process_uploaded_document(file_path)
+        user_name = session_state.get("user_name", "default_user")
+        status_msg = ui_service.process_uploaded_document(file_path, user_name)
         logger.info(f"Document processing status: {status_msg}")
         return status_msg
     except Exception as e:
@@ -67,17 +68,18 @@ def handle_single_selection(selected_items):
         return [selected_items[-1]]
     return selected_items
 
-def handle_document_selection(selected_items):
+def handle_document_selection(selected_items, session_state: dict):
     """Handle document selection and update UI service"""
+    user_name = session_state.get("user_name", "default_user")
     try:
         if selected_items and len(selected_items) > 0:
             selected_filename = selected_items[0]  # Get the first (and only) selected item
-            status_msg = ui_service.set_selected_document(selected_filename)
+            status_msg = ui_service.set_selected_document(selected_filename, user_name)
             logger.info(f"Document selection status: {status_msg}")
             return status_msg
         else:
             # No document selected
-            ui_service.set_selected_document("")
+            ui_service.set_selected_document("", user_name)
             return "Chưa chọn tài liệu nào"
     except Exception as e:
         error_msg = f"Error in document selection: {str(e)}"
@@ -120,23 +122,24 @@ def add_user_message_first(user_input, chat_history):
     return chat_history, ""
 
 
-def handle_chat_input(chat_history):
+def handle_chat_input(chat_history, session_state: dict):
     """Handle chat input and return response. 
     It receives the user input from the textbox and the current chat history, 
     then returns the updated chat history and clears the input box.
 
     Args:
-        user_input (str): The input text from the user.
-        chat_history (List[Tuple[str, str]]): The current chat history as a list of tuples.
+        chat_history (List[gr.ChatMessage]): The current chat history.
+        session_state (dict): Session state containing user information.
     Returns:
         List[gr.ChatMessage]: Updated chat history
 
     """
     # Get the last user input from chat history
     user_input = chat_history[-1].get("content") if chat_history else ""
+    user_name = session_state.get("user_name", "default_user")
 
     try:
-        response = ui_service.handle_chat_query(user_input, chat_history)
+        response = ui_service.handle_chat_query(user_input, chat_history, user_name)
         chat_history.append(gr.ChatMessage(role="assistant", content=response))
         return chat_history
     except Exception as e:
@@ -285,7 +288,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     # Process file upload
     file_upload_btn.upload(
         fn=process_uploaded_document,
-        inputs=[file_upload_btn],
+        inputs=[file_upload_btn, session_state],
         outputs=[status_display]
     ).success(
         fn=update_file_list_choices,
@@ -300,7 +303,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=file_list_checkbox
     ).then(
         fn=handle_document_selection,
-        inputs=file_list_checkbox,
+        inputs=[file_list_checkbox, session_state],
         outputs=status_display
     )
 
@@ -311,7 +314,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[chatbot, user_input_textbox]
     ).then(
         fn=handle_chat_input,
-        inputs=[chatbot],
+        inputs=[chatbot, session_state],
         outputs=[chatbot]
     )
 
@@ -321,7 +324,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[chatbot, user_input_textbox]
     ).then(
         fn=handle_chat_input,
-        inputs=[chatbot],
+        inputs=[chatbot, session_state],
         outputs=[chatbot]
     )
 

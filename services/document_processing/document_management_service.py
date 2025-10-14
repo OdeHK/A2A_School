@@ -70,7 +70,8 @@ class DocumentManagementService:
     
     def process_uploaded_document(
         self, 
-        file_path: str, 
+        file_path: str,
+        username: str,
         rag_service: Optional["RagService"] = None,
         extract_toc: bool = True
     ) -> ProcessingResult:
@@ -79,6 +80,7 @@ class DocumentManagementService:
         
         Args:
             file_path: Path to uploaded file
+            username: User identifier for document ownership
             rag_service: Optional RAG service for vector storage
             extract_toc: Whether to extract table of contents
             
@@ -102,7 +104,7 @@ class DocumentManagementService:
                 processing_status=ProcessingStatus.PROCESSING
             )
 
-            self.database_service.save_document_metadata(user_id="khiemdangle", document_id=document_id, metadata=metadata) #TODO: replace user_id
+            self.database_service.save_document_metadata(username=username, document_id=document_id, metadata=metadata)
 
             # Load documents
             logger.info("Loading document pages...")
@@ -125,9 +127,8 @@ class DocumentManagementService:
                 content_data = extraction_result.content_data.to_dict()
 
 
-                # TODO: replace user_id
-                self.database_service.save_toc_structure_data(user_id="khiemdangle", document_id=document_id, toc_structure=toc_structure_data)
-                self.database_service.save_content_data(user_id="khiemdangle", document_id=document_id, content_data=content_data)
+                self.database_service.save_toc_structure_data(username=username, document_id=document_id, toc_structure=toc_structure_data)
+                self.database_service.save_content_data(username=username, document_id=document_id, content_data=content_data)
 
                 logger.info(f"Extracted ToC with {len(extraction_result.toc_structure.sections)} sections")
                 logger.info(f"Generated content for {len(extraction_result.content_data.content)} items")
@@ -151,7 +152,7 @@ class DocumentManagementService:
             metadata.processing_status = ProcessingStatus.COMPLETED
             metadata.chunk_count = len(chunks)
             metadata.page_count = len(docs_list)
-            self.database_service.save_document_metadata(user_id="khiemdangle", document_id=metadata.document_id, metadata=metadata)
+            self.database_service.save_document_metadata(username=username, document_id=metadata.document_id, metadata=metadata)
             
             # Add document to library
             document_titles = []
@@ -163,7 +164,7 @@ class DocumentManagementService:
                     logger.warning(f"Could not extract titles for document library: {e}")
             
             self.database_service.add_document_to_library(
-                user_id="khiemdangle",
+                username=username,
                 document_id=document_id,
                 name=file_path_obj.stem,  # File name without extension
                 title=document_titles
@@ -191,11 +192,11 @@ class DocumentManagementService:
             # Update metadata with error status if document_id exists
             if 'document_id' in locals():
                 try:
-                    metadata = self.database_service.get_document_metadata(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+                    metadata = self.database_service.get_document_metadata(username=username, document_id=document_id) #TODO: replace user_id
                     if metadata:
                         metadata.processing_status = ProcessingStatus.FAILED
                         metadata.error_message = str(e)
-                        self.database_service.save_document_metadata(user_id="khiemdangle", document_id=document_id, metadata=metadata)
+                        self.database_service.save_document_metadata(username=username, document_id=document_id, metadata=metadata)
                 except Exception as update_error:
                     logger.error(f"Failed to update error status: {update_error}")
             
@@ -207,19 +208,20 @@ class DocumentManagementService:
                 error=str(e)
             )
     
-    def get_document_metadata(self, document_id: str) -> Optional[DocumentMetadata]:
+    def get_document_metadata(self, username: str, document_id: str) -> Optional[DocumentMetadata]:
         """
         Get document metadata by ID.
         
         Args:
+            username: User identifier
             document_id: Document identifier
             
         Returns:
             Document metadata or None if not found
         """
-        return self.database_service.get_document_metadata(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
-    
-    def get_table_of_contents(self, document_id: str) -> Optional[TableOfContents]:
+        return self.database_service.get_document_metadata(username=username, document_id=document_id)
+
+    def get_table_of_contents(self, username: str, document_id: str) -> Optional[TableOfContents]:
         """
         Get table of contents for document (created from TOC structure data).
         
@@ -230,24 +232,25 @@ class DocumentManagementService:
             Table of contents or None if not found
         """
         # Lấy TOC structure data thay vì legacy TOC
-        toc_structure_data = self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
         return TableOfContents(**toc_structure_data)
-    
-    def get_table_of_contents_as_string(self, document_id: str) -> Optional[str]:
+
+    def get_table_of_contents_as_string(self, username: str, document_id: str) -> Optional[str]:
         """
         Get table of contents for document formatted as string.
         
         Args:
+            username: User identifier
             document_id: Document identifier
             
         Returns:
             Table of contents formatted as string or None if not found
         """
         # Lấy TOC structure data trực tiếp
-        toc_structure_data = self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
         if not toc_structure_data:
             return None
         logger.info(f"Raw TOC structure data: {toc_structure_data}")
@@ -263,8 +266,8 @@ class DocumentManagementService:
     #         List of document metadata
     #     """
     #     return self.database_service.li()
-    
-    def get_content_data(self, document_id: str) -> Optional[Dict[str, Any]]:
+
+    def get_content_data(self, username: str, document_id: str) -> Optional[Dict[str, Any]]:
         """
         Get content data from TOC extractor for document.
         
@@ -274,28 +277,31 @@ class DocumentManagementService:
         Returns:
             List of content items or None if not found
         """
-        return self.database_service.get_content_data(user_id="khiemdangle", document_id=document_id)
-    
-    def get_toc_structure_data(self, document_id: str) -> Optional[List[Dict[str, Any]]]:
+        return self.database_service.get_content_data(username=username, document_id=document_id)
+
+    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[List[Dict[str, Any]]]:
         """
         Get TOC structure data from TOC extractor for document.
         
         Args:
+            username: User identifier
             document_id: Document identifier
             
         Returns:
             List of TOC structure items or None if not found
         """
-        return self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id)
-    
-    
-    def get_document_id_dict(self) -> Dict[str, str]:
+        return self.database_service.get_toc_structure_data(username=username, document_id=document_id)
+
+
+    def get_document_id_dict(self, username: str) -> Dict[str, str]:
         """
         Get a dictionary mapping document IDs to file names for current session.
+        Args:
+            username: User identifier
         Returns:
             Dictionary of document_id -> file_name
         """
-        document_metadata_list = self.database_service.list_user_documents(user_id="khiemdangle") # TODO: Cần kiểm tra lại đầu ra 
+        document_metadata_list = self.database_service.list_user_documents(username=username)
         return {doc.document_id: doc.file_name for doc in document_metadata_list}
     
     def update_chunking_strategy(self, strategy_type: ChunkingStrategyType) -> None:
@@ -568,15 +574,15 @@ class DocumentManagementService:
         return result
     
     # === Document Library Management Methods ===
-    
-    def get_document_library(self) -> Dict[str, Dict[str, Any]]:
+
+    def get_document_library(self, username: str) -> Dict[str, Dict[str, Any]]:
         """
         Get current session's document library (all documents).
         
         Returns:
             Dictionary with document_id as key and document info as value
         """
-        return self.database_service.get_document_library(user_id="khiemdangle") #TODO: replace user_id
+        return self.database_service.get_document_library(username="khiemdangle") #TODO: replace user_id
 
     
     def get_document_from_library(self, name: str) -> Optional[Dict[str, Any]]:

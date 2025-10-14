@@ -69,12 +69,12 @@ class DatabaseService:
         try:
             # Create compound index for documents collection
             self.documents_collection.create_index([
-                ("user_id", 1),
+                ("username", 1),
                 ("document_id", 1)
             ], unique=True, name="user_document_idx")
-            
-            # Create index for user_id only for faster user queries
-            self.documents_collection.create_index("user_id", name="user_idx")
+
+            # Create index for username only for faster user queries
+            self.documents_collection.create_index("username", name="user_idx")
 
             
             # Create index for users collection
@@ -85,7 +85,7 @@ class DatabaseService:
         except Exception as e:
             logger.warning(f"Error creating database indexes (may already exist): {e}")
 
-    def save_document_metadata(self, user_id: str, document_id: str, metadata: DocumentMetadata) -> None:
+    def save_document_metadata(self, username: str, document_id: str, metadata: DocumentMetadata) -> None:
         """
         Save document metadata to database.
         
@@ -95,17 +95,17 @@ class DatabaseService:
             metadata: DocumentMetadata object to save
         """
         try:
-            # Convert metadata to dict and add user_id
+            # Convert metadata to dict and add username
             metadata_dict = metadata.model_dump(mode='json') #TODO: check DocumentMetadata
-            metadata_dict['user_id'] = user_id
+            metadata_dict['username'] = username
             metadata_dict['last_updated'] = datetime.now()
             
             result = self.documents_collection.update_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 update={"$set": metadata_dict},
                 upsert=True
             )
-            logger.info(f"Document data saved/updated for document_id: {document_id}, user_id: {user_id}")
+            logger.info(f"Document data saved/updated for document_id: {document_id}, username: {username}")
             logger.debug(f"Update result: {result.raw_result}")
             
         except Exception as e:
@@ -113,12 +113,12 @@ class DatabaseService:
             raise
         
 
-    def get_document_metadata(self, user_id: str, document_id: str) -> Optional[DocumentMetadata]:
+    def get_document_metadata(self, username: str, document_id: str) -> Optional[DocumentMetadata]:
         """
         Retrieve document metadata from database.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_id: Document identifier
             P
         Returns:
@@ -127,13 +127,13 @@ class DatabaseService:
         try:
             # Fetch only fields defined in DocumentMetadata
             result = self.documents_collection.find_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 projection={"_id": 0, **{field: 1 for field in DocumentMetadata.model_fields.keys()}}
             )
             
             if result:
                 # Remove MongoDB _id field and convert to DocumentMetadata
-                result.pop('user_id', None)
+                result.pop('username', None)
                 return DocumentMetadata(**result)
             return None
             
@@ -141,12 +141,12 @@ class DatabaseService:
             logger.error(f"Error retrieving document metadata: {e}")
             return None
 
-    # def save_table_of_content(self, user_id: str, document_id: str, toc: TableOfContents) -> None:
+    # def save_table_of_content(self, username: str, document_id: str, toc: TableOfContents) -> None:
     #     """
     #     Save table of contents to database.
         
     #     Args:
-    #         user_id: User identifier
+    #         username: User identifier
     #         document_id: Document identifier  
     #         toc: TableOfContents object to save
     #     """
@@ -154,7 +154,7 @@ class DatabaseService:
     #         # Convert TableOfContents to dict for storage
     #         toc_dict = toc.model_dump(mode='json')
     #         result = self.documents_collection.update_one(
-    #             filter={"document_id": document_id, "user_id": user_id},
+    #             filter={"document_id": document_id, "username": username},
     #             update={"$set": {"table_of_contents": toc_dict}},
     #             upsert=True
     #         )
@@ -190,33 +190,33 @@ class DatabaseService:
     #         return None
 
 
-    def save_content_data(self, user_id: str, document_id: str, content_data: Dict[str, Any]) -> None:
+    def save_content_data(self, username: str, document_id: str, content_data: Dict[str, Any]) -> None:
         """
         Save content data from TOC extractor to database.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_id: Document identifier
             content_data: Content data dict from TOCExtractionResult
         """
         try:
             result = self.documents_collection.update_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 update={"$set": {"short_content": content_data}}, #TODO: check content_data structure
                 upsert=True
             )
-            logger.info(f"Content data saved for document_id: {document_id}, user_id: {user_id}")
+            logger.info(f"Content data saved for document_id: {document_id}, username: {username}")
             logger.debug(f"Update result: {result.raw_result}")
             
         except Exception as e:
             logger.error(f"Error saving content data: {e}")
 
-    def get_content_data(self, user_id: str, document_id: str) -> Optional[Dict[str, Any]]:
+    def get_content_data(self, username: str, document_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve content data by document ID.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_id: Document identifier
             
         Returns:
@@ -224,7 +224,7 @@ class DatabaseService:
         """
         try:
             result = self.documents_collection.find_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 projection={"short_content": 1, "_id": 0}
             )
 
@@ -236,7 +236,7 @@ class DatabaseService:
             logger.error(f"Error retrieving content data: {e}")
             return None
 
-    def save_toc_structure_data(self, user_id: str, document_id: str, toc_structure: Dict[str, Any]) -> None:
+    def save_toc_structure_data(self, username: str, document_id: str, toc_structure: Dict[str, Any]) -> None:
         """
         Save TOC structure data to database.
         
@@ -247,17 +247,17 @@ class DatabaseService:
         """
         try:
             result = self.documents_collection.update_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 update={"$set": {"table_of_contents": toc_structure}},
                 upsert=True
             )
-            logger.info(f"TOC structure data saved for document_id: {document_id}, user_id: {user_id}")
+            logger.info(f"TOC structure data saved for document_id: {document_id}, username: {username}")
             logger.debug(f"Update result: {result.raw_result}")
             
         except Exception as e:
             logger.error(f"Error saving TOC structure data: {e}")
 
-    def get_toc_structure_data(self, user_id: str, document_id: str) -> Optional[List[Dict[str, Any]]]:
+    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieve TOC structure data by document ID.
         
@@ -270,7 +270,7 @@ class DatabaseService:
         """
         try:
             result = self.documents_collection.find_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 projection={"table_of_contents": 1, "_id": 0}
             )
 
@@ -283,17 +283,17 @@ class DatabaseService:
             logger.error(f"Error retrieving TOC structure data: {e}")
             return None
 
-    def save_document_library(self, user_id: str, document_library: Dict[str, Dict[str, Any]]) -> None:
+    def save_document_library(self, username: str, document_library: Dict[str, Dict[str, Any]]) -> None:
         """
         Save complete document library to database.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_library: Dictionary with document_name as key and document info as value
         """
         try:
             result = self.documents_collection.update_one(
-                filter={"user_id": user_id},
+                filter={"username": username},
                 update={
                     "$set": {
                         "document_library": document_library,
@@ -302,25 +302,25 @@ class DatabaseService:
                 },
                 upsert=True
             )
-            logger.info(f"Document library saved for user_id: {user_id} with {len(document_library)} documents")
+            logger.info(f"Document library saved for username: {username} with {len(document_library)} documents")
             logger.debug(f"Update result: {result.raw_result}")
             
         except Exception as e:
             logger.error(f"Error saving document library: {e}")
 
-    def get_document_library(self, user_id: str) -> Dict[str, Dict[str, Any]]:
+    def get_document_library(self, username: str) -> Dict[str, Dict[str, Any]]:
         """
         Retrieve complete document library for user.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             
         Returns:
             Dictionary with document_name as key and document info as value, or empty dict if not found
         """
         try:
             result = self.documents_collection.find_one(
-                filter={"user_id": user_id},
+                filter={"username": username},
                 projection={"document_library": 1, "_id": 0}
             )
             
@@ -332,19 +332,19 @@ class DatabaseService:
             logger.error(f"Error retrieving document library: {e}")
             return {}
 
-    def add_document_to_library(self, user_id: str, document_id: str, name: str, title: List[str]) -> None:
+    def add_document_to_library(self, username: str, document_id: str, name: str, title: List[str]) -> None:
         """
         Add or update a document in the user's library.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_id: Unique document identifier
             name: Document name
             title: List of document titles/bookmarks
         """
         try:
             # Get existing library
-            document_library = self.get_document_library(user_id)
+            document_library = self.get_document_library(username)
             
             # Add/update document with name as key
             document_library[name] = {
@@ -355,18 +355,18 @@ class DatabaseService:
             }
             
             # Save updated library
-            self.save_document_library(user_id, document_library)
-            logger.info(f"Added document {name} to library for user {user_id}")
+            self.save_document_library(username, document_library)
+            logger.info(f"Added document {name} to library for user {username}")
             
         except Exception as e:
             logger.error(f"Error adding document to library: {e}")
 
-    def remove_document_from_library(self, user_id: str, name: str) -> bool:
+    def remove_document_from_library(self, username: str, name: str) -> bool:
         """
         Remove a document from the user's library.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             name: Document name to remove
             
         Returns:
@@ -374,54 +374,54 @@ class DatabaseService:
         """
         try:
             # Get existing library
-            document_library = self.get_document_library(user_id)
+            document_library = self.get_document_library(username)
             
             if name in document_library:
                 del document_library[name]
-                self.save_document_library(user_id, document_library)
-                logger.info(f"Removed document {name} from library for user {user_id}")
+                self.save_document_library(username, document_library)
+                logger.info(f"Removed document {name} from library for user {username}")
                 return True
-            
-            logger.warning(f"Document {name} not found in library for user {user_id}")
+
+            logger.warning(f"Document {name} not found in library for user {username}")
             return False
             
         except Exception as e:
             logger.error(f"Error removing document from library: {e}")
             return False
 
-    def get_document_from_library(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
+    def get_document_from_library(self, username: str, name: str) -> Optional[Dict[str, Any]]:
         """
         Get specific document from user's library.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             name: Document name
             
         Returns:
             Document information or None if not found
         """
         try:
-            document_library = self.get_document_library(user_id)
+            document_library = self.get_document_library(username)
             return document_library.get(name)
             
         except Exception as e:
             logger.error(f"Error getting document from library: {e}")
             return None
 
-    def list_user_documents(self, user_id: str) -> List[DocumentMetadata]:
+    def list_user_documents(self, username: str) -> List[DocumentMetadata]:
         """
         List all documents for a specific user.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             
         Returns:
             List of DocumentMetadata objects
         """
         try:
             cursor = self.documents_collection.find(
-                filter={"user_id": user_id},
-                projection={"_id": 0, "user_id": 0}
+                filter={"username": username},
+                projection={"_id": 0, "username": 0}
             )
             
             documents = []
@@ -438,12 +438,12 @@ class DatabaseService:
             logger.error(f"Error listing user documents: {e}")
             return []
 
-    def check_document_exists(self, user_id: str, document_id: str) -> bool:
+    def check_document_exists(self, username: str, document_id: str) -> bool:
         """
         Check if a document exists for a specific user.
         
         Args:
-            user_id: User identifier
+            username: User identifier
             document_id: Document identifier
             
         Returns:
@@ -451,7 +451,7 @@ class DatabaseService:
         """
         try:
             result = self.documents_collection.find_one(
-                filter={"document_id": document_id, "user_id": user_id},
+                filter={"document_id": document_id, "username": username},
                 projection={"_id": 1}
             )
             return result is not None
