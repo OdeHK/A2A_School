@@ -22,18 +22,17 @@ from services.models import (
     ProcessingResult, 
     ProcessingStatus
 )
-
 from .document_repository import DocumentRepository
 from .toc_extractor import TOCExtractor
 from .document_loader import DocumentLoader, DocumentType
 from .document_chunker import DocumentChunker, ChunkingStrategyType
 from .document_library import generate_document_id
-from services.database_service import DatabaseService
+
 
 logger = logging.getLogger(__name__)
 
 
-class DocumentManagementService:
+class DocumentManagementServiceOLD:
     """
     Service that orchestrates the complete document processing workflow.
     Handles upload, metadata extraction, ToC extraction, chunking, and RAG integration.
@@ -41,7 +40,7 @@ class DocumentManagementService:
     
     def __init__(
         self,
-        database_service: DatabaseService,
+        repository: Optional[DocumentRepository] = None,
         toc_extractor: Optional[TOCExtractor] = None,
         loader: Optional[DocumentLoader] = None,
         chunker: Optional[DocumentChunker] = None
@@ -55,7 +54,7 @@ class DocumentManagementService:
             loader: Document loader
             chunker: Document chunker
         """
-        self.database_service = database_service
+        self.repository = repository or DocumentRepository()
         self.toc_extractor = toc_extractor or TOCExtractor()
         
         # Initialize loader with default PDF configuration
@@ -85,50 +84,58 @@ class DocumentManagementService:
         Returns:
             ProcessingResult with status and metadata
         """
-
-        # Generate document ID and store file
-        document_id = self._generate_document_id()
+        document_id = None
+        
         try:
             logger.info(f"Starting document processing for: {file_path}")
+            
+            # Generate document ID and store file
+            document_id = self._generate_document_id()
+            stored_document_id = self.repository.store_uploaded_file(file_path, document_id)
+            
+            # Get stored file path
+            stored_file_path = self.repository.get_document_file_path(stored_document_id)
+            if not stored_file_path:
+                raise ValueError("Failed to store uploaded file")
             
             # Create initial metadata
             file_path_obj = Path(file_path)
             metadata = DocumentMetadata(
                 document_id=document_id,
                 file_name=file_path_obj.name,
-                file_path=str(file_path_obj),
+                file_path=str(stored_file_path),
                 file_size=file_path_obj.stat().st_size,
                 upload_date=datetime.now(),
                 processing_status=ProcessingStatus.PROCESSING
             )
-
-            self.database_service.save_document_metadata(user_id="khiemdangle", document_id=document_id, metadata=metadata) #TODO: replace user_id
-
+            
+            self.repository.save_document_metadata(metadata)
+            
             # Load documents
             logger.info("Loading document pages...")
-            docs = self.loader.lazy_load(str(file_path_obj))
+            docs = self.loader.lazy_load(str(stored_file_path))
             docs_list = list(docs)
+            
             if not docs_list:
                 raise ValueError("No documents were loaded from the file")
+            
             logger.info(f"Loaded {len(docs_list)} document pages")
             
             # Extract table of contents if requested
             if extract_toc:
                 logger.info("Extracting table of contents...")
                 extraction_result = self.toc_extractor.extract_toc_and_content(
-                    str(file_path),
+                    str(stored_file_path),
                     document_id=document_id
                 )
                 
                 # Save TOC structure data và content data vào session
                 toc_structure_data = extraction_result.toc_structure.to_dict()
                 content_data = extraction_result.content_data.to_dict()
-
-
-                # TODO: replace user_id
-                self.database_service.save_toc_structure_data(user_id="khiemdangle", document_id=document_id, toc_structure=toc_structure_data)
-                self.database_service.save_content_data(user_id="khiemdangle", document_id=document_id, content_data=content_data)
-
+                
+                self.repository.save_toc_structure_data(document_id, toc_structure_data)
+                self.repository.save_content_data(document_id, content_data)
+                
                 logger.info(f"Extracted ToC with {len(extraction_result.toc_structure.sections)} sections")
                 logger.info(f"Generated content for {len(extraction_result.content_data.content)} items")
                 logger.info(f"Saved ToC structure and content data to session")
@@ -151,7 +158,7 @@ class DocumentManagementService:
             metadata.processing_status = ProcessingStatus.COMPLETED
             metadata.chunk_count = len(chunks)
             metadata.page_count = len(docs_list)
-            self.database_service.save_document_metadata(user_id="khiemdangle", document_id=metadata.document_id, metadata=metadata)
+            self.repository.save_document_metadata(metadata)
             
             # Add document to library
             document_titles = []
@@ -162,40 +169,40 @@ class DocumentManagementService:
                 except Exception as e:
                     logger.warning(f"Could not extract titles for document library: {e}")
             
-            self.database_service.add_document_to_library(
-                user_id="khiemdangle",
-                document_id=document_id,
+            self.repository.add_document_to_library(
+                document_id=stored_document_id,
                 name=file_path_obj.stem,  # File name without extension
+                path=str(stored_file_path),
                 title=document_titles
             )
-
-            logger.info(f"Added document {file_path} to document library")
-
+            
+            logger.info(f"Added document {stored_document_id} to document library")
+            
             # Create success result
             result = ProcessingResult(
                 status=ProcessingStatus.COMPLETED,
-                document_id=document_id,
+                document_id=stored_document_id,
                 file_name=file_path_obj.name,
                 message=f"Successfully processed {file_path_obj.name}",
                 metadata=metadata,
                 table_of_contents=None  
             )
             
-            logger.info(f"Successfully processed document {document_id}")
+            logger.info(f"Successfully processed document {stored_document_id}")
             return result
             
         except Exception as e:
             error_msg = f"Error processing document: {str(e)}"
             logger.error(error_msg)
-
-            # Update metadata with error status if document_id exists
-            if 'document_id' in locals():
+            
+            # Update metadata with error status if stored_document_id exists
+            if 'stored_document_id' in locals():
                 try:
-                    metadata = self.database_service.get_document_metadata(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+                    metadata = self.repository.get_document_metadata(stored_document_id)
                     if metadata:
                         metadata.processing_status = ProcessingStatus.FAILED
                         metadata.error_message = str(e)
-                        self.database_service.save_document_metadata(user_id="khiemdangle", document_id=document_id, metadata=metadata)
+                        self.repository.save_document_metadata(metadata)
                 except Exception as update_error:
                     logger.error(f"Failed to update error status: {update_error}")
             
@@ -217,7 +224,7 @@ class DocumentManagementService:
         Returns:
             Document metadata or None if not found
         """
-        return self.database_service.get_document_metadata(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+        return self.repository.get_document_metadata(document_id)
     
     def get_table_of_contents(self, document_id: str) -> Optional[TableOfContents]:
         """
@@ -230,11 +237,11 @@ class DocumentManagementService:
             Table of contents or None if not found
         """
         # Lấy TOC structure data thay vì legacy TOC
-        toc_structure_data = self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.repository.get_toc_structure_data(document_id)
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
-        return TableOfContents(**toc_structure_data)
+        return toc_structure_data
     
     def get_table_of_contents_as_string(self, document_id: str) -> Optional[str]:
         """
@@ -247,24 +254,23 @@ class DocumentManagementService:
             Table of contents formatted as string or None if not found
         """
         # Lấy TOC structure data trực tiếp
-        toc_structure_data = self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.repository.get_toc_structure_data(document_id)
         if not toc_structure_data:
             return None
         logger.info(f"Raw TOC structure data: {toc_structure_data}")
 
-        # Remove full_document entries and convert to dictionary
         return self._format_toc_structure_as_string(document_id, toc_structure_data)
     
-    # def list_session_documents(self) -> List[DocumentMetadata]:
-    #     """
-    #     List all documents in current session.
+    def list_session_documents(self) -> List[DocumentMetadata]:
+        """
+        List all documents in current session.
         
-    #     Returns:
-    #         List of document metadata
-    #     """
-    #     return self.database_service.li()
+        Returns:
+            List of document metadata
+        """
+        return self.repository.list_session_documents()
     
-    def get_content_data(self, document_id: str) -> Optional[Dict[str, Any]]:
+    def get_content_data(self, document_id: str) -> Optional[List[Dict[str, Any]]]:
         """
         Get content data from TOC extractor for document.
         
@@ -274,7 +280,7 @@ class DocumentManagementService:
         Returns:
             List of content items or None if not found
         """
-        return self.database_service.get_content_data(user_id="khiemdangle", document_id=document_id)
+        return self.repository.get_content_data(document_id)
     
     def get_toc_structure_data(self, document_id: str) -> Optional[List[Dict[str, Any]]]:
         """
@@ -286,7 +292,7 @@ class DocumentManagementService:
         Returns:
             List of TOC structure items or None if not found
         """
-        return self.database_service.get_toc_structure_data(user_id="khiemdangle", document_id=document_id)
+        return self.repository.get_toc_structure_data(document_id)
     
     
     def get_document_id_dict(self) -> Dict[str, str]:
@@ -295,7 +301,7 @@ class DocumentManagementService:
         Returns:
             Dictionary of document_id -> file_name
         """
-        document_metadata_list = self.database_service.list_user_documents(user_id="khiemdangle") # TODO: Cần kiểm tra lại đầu ra 
+        document_metadata_list = self.repository.list_session_documents()
         return {doc.document_id: doc.file_name for doc in document_metadata_list}
     
     def update_chunking_strategy(self, strategy_type: ChunkingStrategyType) -> None:
@@ -312,25 +318,25 @@ class DocumentManagementService:
             logger.error(f"Error updating chunking strategy: {str(e)}")
             raise
     
-    # def get_current_session_id(self) -> Optional[str]:
-    #     """Get current session ID."""
-    #     return self.repository.get_current_session_id()
+    def get_current_session_id(self) -> Optional[str]:
+        """Get current session ID."""
+        return self.repository.get_current_session_id()
     
-    # def create_new_session(self) -> str:
-    #     """Create new session."""
-    #     return self.repository.create_new_session()
+    def create_new_session(self) -> str:
+        """Create new session."""
+        return self.repository.create_new_session()
     
-    # def load_session(self, session_id: str) -> bool:
-    #     """Load existing session."""
-    #     return self.repository.load_session(session_id)
+    def load_session(self, session_id: str) -> bool:
+        """Load existing session."""
+        return self.repository.load_session(session_id)
     
-    # def get_vector_store_path(self) -> Optional[str]:
-    #     """Get vector store path for current session."""
-    #     return self.repository.get_vector_store_path()
+    def get_vector_store_path(self) -> Optional[str]:
+        """Get vector store path for current session."""
+        return self.repository.get_vector_store_path()
     
-    # def cleanup_temp_files(self) -> None:
-    #     """Clean up temporary files."""
-    #     self.repository.cleanup_temp_files()
+    def cleanup_temp_files(self) -> None:
+        """Clean up temporary files."""
+        self.repository.cleanup_temp_files()
     
     def _generate_document_id(self) -> str:
         """Generate unique document ID."""
@@ -366,24 +372,24 @@ class DocumentManagementService:
         
         return titles
     
-    # def get_service_status(self) -> Dict[str, Any]:
-    #     """
-    #     Get current service status.
+    def get_service_status(self) -> Dict[str, Any]:
+        """
+        Get current service status.
         
-    #     Returns:
-    #         Status information
-    #     """
-    #     return {
-    #         "repository_initialized": self.repository is not None,
-    #         "toc_extractor_initialized": self.toc_extractor is not None,
-    #         "loader_initialized": self.loader is not None,
-    #         "chunker_initialized": self.chunker is not None,
-    #         "current_session": self.repository.get_current_session_id(),
-    #         "chunker_strategy": (
-    #             self.chunker.strategy.strategy_name 
-    #             if hasattr(self.chunker, 'strategy') else "unknown"
-    #         )
-    #     }
+        Returns:
+            Status information
+        """
+        return {
+            "repository_initialized": self.repository is not None,
+            "toc_extractor_initialized": self.toc_extractor is not None,
+            "loader_initialized": self.loader is not None,
+            "chunker_initialized": self.chunker is not None,
+            "current_session": self.repository.get_current_session_id(),
+            "chunker_strategy": (
+                self.chunker.strategy.strategy_name 
+                if hasattr(self.chunker, 'strategy') else "unknown"
+            )
+        }
     
     def _format_toc_as_string(self, toc: TableOfContents) -> str:
         """
@@ -576,8 +582,7 @@ class DocumentManagementService:
         Returns:
             Dictionary with document_id as key and document info as value
         """
-        return self.database_service.get_document_library(user_id="khiemdangle") #TODO: replace user_id
-
+        return self.repository.list_all_documents_in_library()
     
     def get_document_from_library(self, name: str) -> Optional[Dict[str, Any]]:
         """
@@ -589,155 +594,155 @@ class DocumentManagementService:
         Returns:
             Document information or None if not found
         """
-        return self.database_service.get_document_from_library(user_id="khiemdangle", name=name) #TODO: replace user_id
+        return self.repository.get_document_from_library(name)
     
-    # def get_document_library_summary(self) -> Dict[str, Any]:
-    #     """
-    #     Get summary information about the document library.
+    def get_document_library_summary(self) -> Dict[str, Any]:
+        """
+        Get summary information about the document library.
         
-    #     Returns:
-    #         Summary information including document count and list of documents
-    #     """
-    #     library = self.database_service.get_document_library(user_id="khiemdangle") #TODO: replace user_id
+        Returns:
+            Summary information including document count and list of documents
+        """
+        library = self.repository.list_all_documents_in_library()
         
-    #     documents_info = []
-    #     for name, doc_info in library.items():
-    #         documents_info.append({
-    #             'document_id': doc_info.get('document_id'),
-    #             'name': doc_info['name'],
-    #             'title_count': len(doc_info.get('title', []))
-    #         })
+        documents_info = []
+        for name, doc_info in library.items():
+            documents_info.append({
+                'document_id': doc_info.get('document_id'),
+                'name': doc_info['name'],
+                'title_count': len(doc_info.get('title', []))
+            })
         
-    #     return {
-    #         'total_documents': len(library),
-    #         'documents': documents_info,
-    #         'session_id': self.repository.get_current_session_id()
-    #     }
+        return {
+            'total_documents': len(library),
+            'documents': documents_info,
+            'session_id': self.repository.get_current_session_id()
+        }
     
-    # def add_external_document_to_library(self, file_path: str, extract_bookmarks: bool = True) -> str:
-    #     """
-    #     Add an external document to the library without full processing.
-    #     Useful for referencing documents that don't need RAG processing.
+    def add_external_document_to_library(self, file_path: str, extract_bookmarks: bool = True) -> str:
+        """
+        Add an external document to the library without full processing.
+        Useful for referencing documents that don't need RAG processing.
         
-    #     Args:
-    #         file_path: Path to the document file
-    #         extract_bookmarks: Whether to extract PDF bookmarks for title
+        Args:
+            file_path: Path to the document file
+            extract_bookmarks: Whether to extract PDF bookmarks for title
             
-    #     Returns:
-    #         Generated document_id
-    #     """
-    #     try:
-    #         file_path_obj = Path(file_path)
+        Returns:
+            Generated document_id
+        """
+        try:
+            file_path_obj = Path(file_path)
             
-    #         if not file_path_obj.exists():
-    #             raise FileNotFoundError(f"File not found: {file_path}")
+            if not file_path_obj.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
             
-    #         # Generate document ID
-    #         doc_name = file_path_obj.stem
-    #         doc_id = generate_document_id(doc_name, str(file_path))
+            # Generate document ID
+            doc_name = file_path_obj.stem
+            doc_id = generate_document_id(doc_name, str(file_path))
             
-    #         # Extract bookmarks if requested and file is PDF
-    #         titles = []
-    #         if extract_bookmarks and file_path_obj.suffix.lower() == '.pdf':
-    #             try:
-    #                 from PyPDF2 import PdfReader
-    #                 from .document_library import get_all_bookmark_titles
+            # Extract bookmarks if requested and file is PDF
+            titles = []
+            if extract_bookmarks and file_path_obj.suffix.lower() == '.pdf':
+                try:
+                    from PyPDF2 import PdfReader
+                    from .document_library import get_all_bookmark_titles
                     
-    #                 reader = PdfReader(str(file_path))
-    #                 titles = get_all_bookmark_titles(reader.outline)
+                    reader = PdfReader(str(file_path))
+                    titles = get_all_bookmark_titles(reader.outline)
                     
-    #             except Exception as e:
-    #                 logger.warning(f"Could not extract bookmarks from {file_path}: {e}")
+                except Exception as e:
+                    logger.warning(f"Could not extract bookmarks from {file_path}: {e}")
             
-    #         # Add to library
-    #         self.repository.add_document_to_library(
-    #             document_id=doc_id,
-    #             name=doc_name,
-    #             path=str(file_path),
-    #             title=titles
-    #         )
+            # Add to library
+            self.repository.add_document_to_library(
+                document_id=doc_id,
+                name=doc_name,
+                path=str(file_path),
+                title=titles
+            )
             
-    #         logger.info(f"Added external document {doc_id} to library")
-    #         return doc_id
+            logger.info(f"Added external document {doc_id} to library")
+            return doc_id
             
-    #     except Exception as e:
-    #         logger.error(f"Error adding external document to library: {e}")
-    #         raise
+        except Exception as e:
+            logger.error(f"Error adding external document to library: {e}")
+            raise
     
-    # def remove_document_from_library(self, document_id: str) -> bool:
-    #     """
-    #     Remove a document from the library.
+    def remove_document_from_library(self, document_id: str) -> bool:
+        """
+        Remove a document from the library.
         
-    #     Args:
-    #         document_id: Document identifier to remove
+        Args:
+            document_id: Document identifier to remove
             
-    #     Returns:
-    #         True if removed, False if not found
-    #     """
-    #     return self.repository.remove_document_from_library(document_id)
+        Returns:
+            True if removed, False if not found
+        """
+        return self.repository.remove_document_from_library(document_id)
     
-    # def search_documents_in_library(self, query: str) -> List[Dict[str, Any]]:
-    #     """
-    #     Search for documents in the library by name or title.
+    def search_documents_in_library(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Search for documents in the library by name or title.
         
-    #     Args:
-    #         query: Search query
+        Args:
+            query: Search query
             
-    #     Returns:
-    #         List of matching documents
-    #     """
-    #     library = self.repository.list_all_documents_in_library()
-    #     query_lower = query.lower()
+        Returns:
+            List of matching documents
+        """
+        library = self.repository.list_all_documents_in_library()
+        query_lower = query.lower()
         
-    #     matching_docs = []
+        matching_docs = []
         
-    #     for name, doc_info in library.items():
-    #         # Search in name
-    #         if query_lower in doc_info['name'].lower():
-    #             matching_docs.append({
-    #                 'document_id': doc_info.get('document_id'),
-    #                 'name': doc_info['name'],
-    #                 'match_type': 'name'
-    #             })
-    #             continue
+        for name, doc_info in library.items():
+            # Search in name
+            if query_lower in doc_info['name'].lower():
+                matching_docs.append({
+                    'document_id': doc_info.get('document_id'),
+                    'name': doc_info['name'],
+                    'match_type': 'name'
+                })
+                continue
             
-    #         # Search in titles
-    #         for title in doc_info.get('title', []):
-    #             if query_lower in title.lower():
-    #                 matching_docs.append({
-    #                     'document_id': doc_info.get('document_id'),
-    #                     'name': doc_info['name'],
-    #                     'match_type': 'title',
-    #                     'matched_title': title
-    #                 })
-    #                 break
+            # Search in titles
+            for title in doc_info.get('title', []):
+                if query_lower in title.lower():
+                    matching_docs.append({
+                        'document_id': doc_info.get('document_id'),
+                        'name': doc_info['name'],
+                        'match_type': 'title',
+                        'matched_title': title
+                    })
+                    break
         
-    #     return matching_docs
+        return matching_docs
     
-    # def get_document_info_from_library(self, name: str) -> Optional[Dict[str, Any]]:
-    #     """
-    #     Get detailed information about a document from the library.
+    def get_document_info_from_library(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed information about a document from the library.
         
-    #     Args:
-    #         name: Document name
+        Args:
+            name: Document name
             
-    #     Returns:
-    #         Document information or None if not found
-    #     """
-    #     doc_info = self.repository.get_document_from_library(name)
+        Returns:
+            Document information or None if not found
+        """
+        doc_info = self.repository.get_document_from_library(name)
         
-    #     if not doc_info:
-    #         return None
+        if not doc_info:
+            return None
         
-    #     # Add additional information (include document_id, exclude path)
-    #     result = {
-    #         'document_id': doc_info.get('document_id'),
-    #         'name': doc_info['name'],
-    #         'title': doc_info.get('title', []),
-    #         'title_count': len(doc_info.get('title', []))
-    #     }
+        # Add additional information (include document_id, exclude path)
+        result = {
+            'document_id': doc_info.get('document_id'),
+            'name': doc_info['name'],
+            'title': doc_info.get('title', []),
+            'title_count': len(doc_info.get('title', []))
+        }
         
-    #     # Note: Metadata checking removed since we no longer use document_id as reference
-    #     result['is_processed'] = False
+        # Note: Metadata checking removed since we no longer use document_id as reference
+        result['is_processed'] = False
         
-    #     return result
+        return result
