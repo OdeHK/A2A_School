@@ -10,6 +10,7 @@ from apiclient import discovery
 from httplib2 import Http
 from oauth2client import client, file, tools
 
+from services.database_service import DatabaseService
 from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
@@ -38,6 +39,7 @@ class UIIntegrationService:
         
         # Initialize services in correct order
         self._initialize_rag_service()
+        self._initialize_database_service()
         self._initialize_document_management_service()
         self._initialize_quiz_generation_service()
         self._initialize_agent_service()
@@ -68,6 +70,17 @@ class UIIntegrationService:
             logger.error(f"Error initializing RAG service: {str(e)}")
             # Initialize with default settings as fallback
             self.rag_service = RagService()
+            
+    def _initialize_database_service(self):
+        """
+        Initialize or reinitialize the database service.
+        """
+        try:
+            self.database_service = DatabaseService()
+            logger.info("Database service initialized")
+        except Exception as e:
+            self.database_service = None
+            logger.error(f"Error initializing database service: {str(e)}")
 
     def _initialize_document_management_service(self):
         """
@@ -75,7 +88,9 @@ class UIIntegrationService:
         """
         try:
             # TODO: Modify DocumentManagementService to accept loader and chunker strategies
-            self.doc_management_service = DocumentManagementService()
+            if not self.database_service:
+                self._initialize_database_service()
+            self.doc_management_service = DocumentManagementService(self.database_service)
             logger.info("Document management service initialized")
         except Exception as e:
             self.doc_management_service = None

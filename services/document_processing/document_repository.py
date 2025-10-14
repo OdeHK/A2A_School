@@ -232,49 +232,49 @@ class DocumentRepository:
             logger.error(f"Error loading metadata for {document_id}: {str(e)}")
             return None
     
-    def save_table_of_contents(self, document_id: str, toc: TableOfContents) -> None:
-        """
-        Save table of contents to JSON file.
+    # def save_table_of_contents(self, document_id: str, toc: TableOfContents) -> None:
+    #     """
+    #     Save table of contents to JSON file.
         
-        Args:
-            document_id: Document ID
-            toc: Table of contents to save
-        """
-        session_dir = self._ensure_session()
-        toc_file = session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
+    #     Args:
+    #         document_id: Document ID
+    #         toc: Table of contents to save
+    #     """
+    #     session_dir = self._ensure_session()
+    #     toc_file = session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
         
-        with open(toc_file, 'w', encoding='utf-8') as f:
-            json.dump(toc.model_dump(mode='json'), f, indent=2, ensure_ascii=False)
+    #     with open(toc_file, 'w', encoding='utf-8') as f:
+    #         json.dump(toc.model_dump(mode='json'), f, indent=2, ensure_ascii=False)
         
-        logger.info(f"Saved ToC for document {document_id}")
+    #     logger.info(f"Saved ToC for document {document_id}")
     
-    def get_table_of_contents(self, document_id: str) -> Optional[TableOfContents]:
-        """
-        Get table of contents by document ID.
+    # def get_table_of_contents(self, document_id: str) -> Optional[TableOfContents]:
+    #     """
+    #     Get table of contents by document ID.
         
-        Args:
-            document_id: Document ID
+    #     Args:
+    #         document_id: Document ID
             
-        Returns:
-            Table of contents or None if not found
-        """
-        if self.current_session_dir is None:
-            return None
+    #     Returns:
+    #         Table of contents or None if not found
+    #     """
+    #     if self.current_session_dir is None:
+    #         return None
         
-        toc_file = self.current_session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
+    #     toc_file = self.current_session_dir / DocumentRepositoryConstants.TOC_DIR / f"{document_id}_toc.json"
         
-        if not toc_file.exists():
-            return None
+    #     if not toc_file.exists():
+    #         return None
         
-        try:
-            with open(toc_file, 'r', encoding='utf-8') as f:
-                toc_data = json.load(f)
+    #     try:
+    #         with open(toc_file, 'r', encoding='utf-8') as f:
+    #             toc_data = json.load(f)
             
-            return TableOfContents(**toc_data)
+    #         return TableOfContents(**toc_data)
         
-        except Exception as e:
-            logger.error(f"Error loading ToC for {document_id}: {str(e)}")
-            return None
+    #     except Exception as e:
+    #         logger.error(f"Error loading ToC for {document_id}: {str(e)}")
+    #         return None
     
     def get_document_file_path(self, document_id: str) -> Optional[Path]:
         """
