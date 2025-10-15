@@ -2,7 +2,6 @@ import time
 import gradio as gr
 from typing import List
 import logging
-from pymongo import MongoClient
 
 # Import our services
 from services.ui_integration_service import UIIntegrationService
@@ -172,26 +171,24 @@ def handle_google_authentication():
 
 def authenticate(username, password):
     """
-    Authenticate user credentials.
-    This is a placeholder function. Replace with actual authentication logic.
+    Authenticate user credentials using UI integration service.
     """
-    uri = "mongodb://A4Teacher_application:A4Teacher_application@127.0.0.1:27017/?authSource=admin"
-
     try:
-        client = MongoClient(uri)
-        database = client.get_database(name="agent_for_teacher")
-        collection = database.get_collection(name="users")
-        user = collection.find_one({"username": username, "password": password})
-        client.close()
-
-        if user:
+        # Use UI service to authenticate
+        is_authenticated = ui_service.authenticate_user(username, password)
+        
+        if is_authenticated:
+            logger.info(f"User {username} authenticated successfully")
             return True
         else:
-            logger.warning("Invalid username or password.")
+            logger.warning(f"Authentication failed for user: {username}")
             return False
+            
     except Exception as e:
-        logger.error(f"Database connection error: {str(e)}")
+        logger.error(f"Error during authentication: {str(e)}")
+        # Fallback to default admin credentials in case of error
         if username == "admin" and password == "admin":
+            logger.info("Used fallback admin credentials")
             return True
         return False
 
@@ -256,7 +253,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
                 gr.ChatMessage(role="assistant", content="👋 Xin chào! Tôi là trợ lý AI đắc lực của bạn!\n\n🔸 Tôi có thể giúp bạn:\n• Soạn bộ đề kiểm tra một cách chính xác\n• Tổng hợp và phân tích bài làm của học sinh\n• Quản lý lớp học thông qua Google Classroom\n\n**Để bắt đầu:** Upload tài liệu ở bên trái 📂 hoặc kết nối với dịch vụ Google ở bên phải 🔗")
             ]
             chatbot = gr.Chatbot(
-                value=initial_message,
+                value=initial_message, # type: ignore
                 type="messages",
                 label="💬 Trò chuyện với AI",
                 show_label=True,

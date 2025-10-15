@@ -7,6 +7,8 @@ from services.models import (
         TableOfContents,
         TocSection
 )
+import dns.resolver
+from pymongo.server_api import ServerApi
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,8 +28,12 @@ class DatabaseService:
         """
         #TODO: load uri from environment instead hardcode
         try:
-            uri = "mongodb://A4Teacher_application:A4Teacher_application@127.0.0.1:27017/?authSource=admin"
-            self.client = MongoClient(uri)
+            dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+            dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']  
+
+            uri = "mongodb+srv://agent_for_teacher_application:tYX0ZOed2Hcfiw4P@cluster0.tvzrs7o.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+            # Create a new client and connect to the server
+            self.client = MongoClient(uri, server_api=ServerApi('1'))
             
             # Test connection
             self.client.admin.command('ismaster')
@@ -589,6 +595,34 @@ class DatabaseService:
     #     except Exception as e:
     #         logger.error(f"Error cleaning up user data: {e}")
     #         return False
+    
+    def authenticate_user(self, username: str, password: str) -> bool:
+        """
+        Authenticate user credentials against the database.
+        
+        Args:
+            username: Username to authenticate
+            password: Password to verify
+            
+        Returns:
+            True if authentication successful, False otherwise
+        """
+        try:
+            user = self.users_collection.find_one({
+                "username": username,
+                "password": password
+            })
+            
+            if user:
+                logger.info(f"User authentication successful: {username}")
+                return True
+            else:
+                logger.warning(f"User authentication failed: {username}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during user authentication: {e}")
+            return False
     
     def close_connection(self) -> None:
         """Close the database connection."""
