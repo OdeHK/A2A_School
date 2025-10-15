@@ -32,10 +32,7 @@ class UIIntegrationService:
         self.doc_management_service: Optional[DocumentManagementService] = None
         self.quiz_generation_service: Optional[QuizGenerationService] = None
         self.agent_service: Optional[TeacherAgent] = None
-        self.current_files: List[str] = []
         self.processing_status: Dict[str, Any] = {}
-        self.selected_document: Optional[str] = None  # Track selected document filename
-        self.selected_document_id: Optional[str] = None  # Track selected document ID
         
         # Initialize services in correct order
         self._initialize_rag_service()
@@ -151,7 +148,6 @@ class UIIntegrationService:
                                                                   rag_service=self.rag_service,
                                                                   extract_toc=True)
             
-            self.current_files.append(result.file_name)
 
             return (f"✅ Đã xử lý thành công: {result.file_name}\n"
                    f"📄 Số trang: {result.metadata.page_count if result.metadata else 'N/A'}\n"
@@ -160,12 +156,8 @@ class UIIntegrationService:
             return f"❌ Error: {str(e)}", "Error"
         
 
-    def get_current_files(self) -> List[str]:
-        """Get the current list of files."""
-        return self.current_files
     
-    
-    def handle_url_input(self, url: str) -> Tuple[List[str], str, str]:
+    def handle_url_input(self, url: str) :
         """
         Handle URL input (for future Google Drive integration).
         
@@ -175,21 +167,8 @@ class UIIntegrationService:
         Returns:
             Tuple of (updated_file_list, cleared_url_input, status_message)
         """
-        try:
-            if not url or not url.strip():
-                return self.current_files, "", "No URL provided"
-            
-            # For now, just add URL to the list (implement Google Drive integration later)
-            if url not in self.current_files:
-                self.current_files.append(url)
-                logger.info(f"Added URL to list: {url}")
-            
-            return self.current_files, "", f"URL added: {url}"
-            
-        except Exception as e:
-            error_msg = f"Error handling URL: {str(e)}"
-            logger.error(error_msg)
-            return self.current_files, "", error_msg
+        #TODO: Implement URL handling logic
+        pass
     
     def update_chunker_strategy(self, strategy: str) -> str:
         """
@@ -387,69 +366,70 @@ class UIIntegrationService:
             return (False, f"Lỗi đăng nhập Google: {error_msg}")
 
 
-    def set_selected_document(self, selected_filename: str, username: str) -> str:
+    def find_document_id_by_filename(self, username: str, selected_filename: str) -> Tuple[Optional[str], str]:
         """
-        Set the selected document and convert filename to document_id.
+        Find document_id based on username and selected filename.
         
         Args:
+            username: The username to search documents for
             selected_filename: The filename selected by user from UI
             
         Returns:
-            Status message
+            Tuple of (document_id or None, status_message)
         """
         try:
             if not selected_filename or not selected_filename.strip():
-                self.selected_document = None
-                self.selected_document_id = None
-                return "Không có tài liệu nào được chọn"
-            
-            # Store selected filename
-            self.selected_document = selected_filename
+                return None, "Không có tài liệu nào được chọn"
             
             # Convert filename to document_id using document management service
-            if self.doc_management_service:
-                document_id_dict = self.doc_management_service.get_document_id_dict(username=username)
-
-                # Find document_id by matching filename
-                selected_document_id = None
-                for doc_id, filename in document_id_dict.items():
-                    if filename == selected_filename:
-                        selected_document_id = doc_id
-                        break
-                
-                if selected_document_id:
-                    self.selected_document_id = selected_document_id
-                    logger.info(f"Selected document: {selected_filename} -> document_id: {selected_document_id}")
-                    return f"✅ Đã chọn tài liệu: {selected_filename}"
-                else:
-                    logger.warning(f"Cannot find document_id for filename: {selected_filename}")
-                    return f"❌ Không tìm thấy ID cho tài liệu: {selected_filename}"
-            else:
+            if not self.doc_management_service:
                 logger.error("Document management service not available")
-                return "❌ Dịch vụ quản lý tài liệu không khả dụng"
+                return None, "❌ Dịch vụ quản lý tài liệu không khả dụng"
+            
+            document_id_dict = self.doc_management_service.get_document_id_dict(username=username)
+
+            # Find document_id by matching filename
+            selected_document_id = None
+            for doc_id, filename in document_id_dict.items():
+                if filename == selected_filename:
+                    selected_document_id = doc_id
+                    break
+            
+            if selected_document_id:
+                logger.info(f"Found document: {selected_filename} -> document_id: {selected_document_id}")
+                return selected_document_id, f"✅ Đã chọn tài liệu: {selected_filename}"
+            else:
+                logger.warning(f"Cannot find document_id for filename: {selected_filename}")
+                return None, f"❌ Không tìm thấy ID cho tài liệu: {selected_filename}"
                 
         except Exception as e:
-            error_msg = f"Error setting selected document: {str(e)}"
+            error_msg = f"Error finding document_id: {str(e)}"
             logger.error(error_msg)
-            return f"❌ {error_msg}"
+            return None, f"❌ {error_msg}"
     
-    def get_selected_document_id(self) -> Optional[str]:
+    def get_user_files(self, username: str) -> List[str]:
         """
-        Get the current selected document ID.
+        Get list of filenames for a specific user.
         
+        Args:
+            username: The username to get files for
+            
         Returns:
-            Selected document ID or None if no document is selected
+            List of filenames
         """
-        return self.selected_document_id
-    
-    def get_selected_document_filename(self) -> Optional[str]:
-        """
-        Get the current selected document filename.
-        
-        Returns:
-            Selected document filename or None if no document is selected
-        """
-        return self.selected_document
+        try:
+            if not self.doc_management_service:
+                logger.error("Document management service not available")
+                return []
+            
+            document_id_dict = self.doc_management_service.get_document_id_dict(username=username)
+            filenames = list(document_id_dict.values())
+            logger.info(f"Found {len(filenames)} files for user {username}")
+            return filenames
+            
+        except Exception as e:
+            logger.error(f"Error getting user files: {str(e)}")
+            return []
     
     def authenticate_user(self, username: str, password: str) -> bool:
         """
@@ -485,7 +465,6 @@ class UIIntegrationService:
             "doc_management_service_initialized": self.doc_management_service is not None,
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
             "agent_service_initialized": self.agent_service is not None,
-            "files_loaded": len(self.current_files),
             "documents_processed": len(self.processing_status)
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
