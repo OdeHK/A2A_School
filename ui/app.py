@@ -27,41 +27,37 @@ def process_uploaded_document(file_path: str, session_state: dict):
         return error_msg
     
 def add_url_and_clear(new_url, current_file_list: List):
-    """Handle URL input and add to current list"""
-    try:
-        updated_list, cleared_url, status_msg = ui_service.handle_url_input(new_url)
-        logger.info(f"URL input status: {status_msg}")
-        return updated_list, cleared_url
-    except Exception as e:
-        logger.error(f"Error in add_url_and_clear: {str(e)}")
-        return current_file_list, ""
+    # """Handle URL input and add to current list"""
+    # try:
+    #     updated_list, cleared_url, status_msg = ui_service.handle_url_input(new_url)
+    #     logger.info(f"URL input status: {status_msg}")
+    #     return updated_list, cleared_url
+    # except Exception as e:
+    #     logger.error(f"Error in add_url_and_clear: {str(e)}")
+    #     return current_file_list, ""
+    pass
 
 
-# Function to process file list 
+# ==== Function to process file list =====
 def convert_file_list_to_checkbox(file_list: List):
     # Chuyển đổi danh sách file thành choices cho CheckboxGroup
     if not file_list:
         return gr.CheckboxGroup(choices=[], value=[])
-    
-    choices = []
-    for idx, item in enumerate(file_list):
-        if hasattr(item, 'name'):  # File upload
-            choices.append(f"hello{item.name}")
-        else:  # URL
-            choices.append(f"{item}")
-    
-    return gr.CheckboxGroup(choices=choices, value=[])
 
-def update_file_list_choices():
-    """Get the current list of files"""
+    return gr.CheckboxGroup(choices=file_list, value=[])
 
-    current_files = ui_service.get_current_files()
+def update_file_list_choices(session_state: dict):
+    """Get the current list of files for the user"""
+
+    user_name = session_state.get("user_name", "default_user")
+    current_files = ui_service.get_user_files(user_name)
     file_list_checkbox = convert_file_list_to_checkbox(current_files)
-    logger.info(f"Current files: {current_files}")
+    logger.info(f"Current files for {user_name}: {current_files}")
     return file_list_checkbox
 
 def handle_single_selection(selected_items):
     """Đảm bảo chỉ có thể chọn một nguồn duy nhất"""
+    logger.info(f"Selected items before enforcing single selection: {selected_items}")
     if len(selected_items) > 1:
         # Chỉ giữ lại item được chọn cuối cùng
         return [selected_items[-1]]
@@ -73,17 +69,28 @@ def handle_document_selection(selected_items, session_state: dict):
     try:
         if selected_items and len(selected_items) > 0:
             selected_filename = selected_items[0]  # Get the first (and only) selected item
-            status_msg = ui_service.set_selected_document(selected_filename, user_name)
+            
+            # Find document_id using ui_service
+            document_id, status_msg = ui_service.find_document_id_by_filename(user_name, selected_filename)
+            
             logger.info(f"Document selection status: {status_msg}")
-            return status_msg
+            
+            # Update session state with selected document information
+            updated_session_state = session_state.copy()
+            updated_session_state["selected_document_id"] = document_id
+            
+            return status_msg, updated_session_state
         else:
-            # No document selected
-            ui_service.set_selected_document("", user_name)
-            return "Chưa chọn tài liệu nào"
+            # No document selected - clear the session state
+            updated_session_state = session_state.copy()
+            updated_session_state["selected_document_id"] = None
+            
+            return "Chưa chọn tài liệu nào", updated_session_state
     except Exception as e:
         error_msg = f"Error in document selection: {str(e)}"
         logger.error(error_msg)
-        return error_msg
+        return error_msg, session_state
+
 
 # Function to handle loader and chunker dropdown changes
 def on_loader_change(loader_value):
@@ -280,6 +287,10 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         fn=create_greeting_message,
         inputs=[session_state],
         outputs=[]
+    ).then(
+        fn=update_file_list_choices,
+        inputs=[session_state],
+        outputs=[file_list_checkbox]
     )
 
     # Process file upload
@@ -289,7 +300,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[status_display]
     ).success(
         fn=update_file_list_choices,
-        inputs=[],
+        inputs=[session_state],
         outputs=[file_list_checkbox]
     )
 
@@ -301,7 +312,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     ).then(
         fn=handle_document_selection,
         inputs=[file_list_checkbox, session_state],
-        outputs=status_display
+        outputs=[status_display, session_state]
     )
 
     # Chat functionality
