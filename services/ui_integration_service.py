@@ -90,7 +90,7 @@ class UIIntegrationService:
             # TODO: Modify DocumentManagementService to accept loader and chunker strategies
             if not self.database_service:
                 self._initialize_database_service()
-            self.doc_management_service = DocumentManagementService(self.database_service)
+            self.doc_management_service = DocumentManagementService(database_service=self.database_service)
             logger.info("Document management service initialized")
         except Exception as e:
             self.doc_management_service = None
@@ -450,6 +450,28 @@ class UIIntegrationService:
             Selected document filename or None if no document is selected
         """
         return self.selected_document
+    
+    def authenticate_user(self, username: str, password: str) -> bool:
+        """
+        Authenticate user credentials using database service.
+        
+        Args:
+            username: Username to authenticate
+            password: Password to verify
+            
+        Returns:
+            True if authentication successful, False otherwise
+        """
+        try:
+            if not self.database_service:
+                logger.error("Database service not available for authentication")
+                return False
+            
+            return self.database_service.authenticate_user(username, password)
+            
+        except Exception as e:
+            logger.error(f"Error in authenticate_user: {str(e)}")
+            return False
     
     def get_service_status(self) -> Dict[str, Any]:
         """
