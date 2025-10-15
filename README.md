@@ -43,11 +43,29 @@ pip install gradio pymupdf pydantic pydantic-settings
 ```
 
 ### Environment Variables
-Tạo file `.env` với nội dung:
+Tạo file `.env` từ template:
+```bash
+cp .env.example .env
+```
+
+Sau đó cập nhật các giá trị trong file `.env`:
 ```env
+# API Keys
 GOOGLE_API_KEY=your_google_api_key_here
 NVIDIA_API_KEY=your_nvidia_api_key_here
+
+# MongoDB Configuration
+MONGODB_URI=your_mongodb_connection_uri_here
+MONGODB_DATABASE_NAME=agent_for_teacher
+
+# Optional: Các cấu hình khác
+VECTOR_DB_DIR=./vector_db
+LOGS_DIR=./logs
 ```
+
+**Lưu ý về MongoDB URI:**
+- Để sử dụng MongoDB Atlas (cloud): `mongodb+srv://username:password@cluster.mongodb.net/`
+- Để sử dụng MongoDB local: `mongodb://username:password@localhost:27017/`
 
 ## 🚀 Chạy ứng dụng
 ```bash

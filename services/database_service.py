@@ -10,6 +10,7 @@ from services.models import (
 import dns.resolver
 from pymongo.server_api import ServerApi
 import logging
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +27,25 @@ class DatabaseService:
         Raises:
             ConnectionFailure: If database connection fails
         """
-        #TODO: load uri from environment instead hardcode
         try:
+            # Load settings from environment
+            settings = get_settings()
+            
+            # Configure DNS resolver
             dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
             dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']  
 
-            uri = "mongodb+srv://agent_for_teacher_application:tYX0ZOed2Hcfiw4P@cluster0.tvzrs7o.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+            # Get MongoDB URI from settings
+            uri = settings.mongodb_uri
+            database_name = settings.mongodb_database_name
+            
             # Create a new client and connect to the server
             self.client = MongoClient(uri, server_api=ServerApi('1'))
             
             # Test connection
             self.client.admin.command('ismaster')
 
-            self.db = self.client.get_database("agent_for_teacher")
+            self.db = self.client.get_database(database_name)
             self.users_collection = self.db.get_collection("users")
             self.documents_collection = self.db.get_collection("documents")
             
