@@ -49,8 +49,6 @@ class DatabaseService:
             self.users_collection = self.db.get_collection("users")
             self.documents_collection = self.db.get_collection("documents")
             
-            # Create indexes for better performance
-            self._create_indexes()
             
             logger.info("Database connection established successfully")
             
@@ -75,28 +73,6 @@ class DatabaseService:
             logger.error(f"Database health check failed: {e}")
             return False
 
-    def _create_indexes(self) -> None:
-        """
-        Create database indexes for better query performance.
-        """
-        try:
-            # Create compound index for documents collection
-            self.documents_collection.create_index([
-                ("username", 1),
-                ("document_id", 1)
-            ], unique=True, name="user_document_idx")
-
-            # Create index for username only for faster user queries
-            self.documents_collection.create_index("username", name="user_idx")
-
-            
-            # Create index for users collection
-            self.users_collection.create_index("user_id", unique=True, name="user_id_idx")
-            
-            logger.info("Database indexes created successfully")
-            
-        except Exception as e:
-            logger.warning(f"Error creating database indexes (may already exist): {e}")
 
     def save_document_metadata(self, username: str, document_id: str, metadata: DocumentMetadata) -> None:
         """
