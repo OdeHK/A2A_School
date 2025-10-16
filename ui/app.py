@@ -39,14 +39,15 @@ def add_url_and_clear(new_url, current_file_list: List):
 
 
 # ==== Function to process file list =====
-def convert_file_list_to_checkbox(file_list: List):
-    # Chuyển đổi danh sách file thành choices cho CheckboxGroup
+def convert_file_list_to_checkbox(file_list: List) -> gr.CheckboxGroup:
+    """Convert list of files to gr.CheckboxGroup with single selection enforced"""
     if not file_list:
         return gr.CheckboxGroup(choices=[], value=[])
 
-    return gr.CheckboxGroup(choices=file_list, value=[])
+    # Return CheckboxGroup with single selection enforced
+    return gr.CheckboxGroup(choices=file_list, value=[file_list[0]])
 
-def update_file_list_choices(session_state: dict):
+def update_file_list_choices(session_state: dict) -> gr.CheckboxGroup:
     """Get the current list of files for the user"""
 
     user_name = session_state.get("user_name", "default_user")
@@ -55,7 +56,7 @@ def update_file_list_choices(session_state: dict):
     logger.info(f"Current files for {user_name}: {current_files}")
     return file_list_checkbox
 
-def handle_single_selection(selected_items):
+def handle_single_selection(selected_items: List[str]) -> List[str]:
     """Đảm bảo chỉ có thể chọn một nguồn duy nhất"""
     logger.info(f"Selected items before enforcing single selection: {selected_items}")
     if len(selected_items) > 1:
@@ -63,7 +64,7 @@ def handle_single_selection(selected_items):
         return [selected_items[-1]]
     return selected_items
 
-def handle_document_selection(selected_items, session_state: dict):
+def handle_document_selection(selected_items: List[str], session_state: dict):
     """Handle document selection and update UI service"""
     user_name = session_state.get("user_name", "default_user")
     try:
@@ -143,9 +144,9 @@ def handle_chat_input(chat_history, session_state: dict):
     # Get the last user input from chat history
     user_input = chat_history[-1].get("content") if chat_history else ""
     user_name = session_state.get("user_name", "default_user")
-
+    selected_document_id = session_state.get("selected_document_id")
     try:
-        response = ui_service.handle_chat_query(user_input, chat_history, user_name)
+        response = ui_service.handle_chat_query(user_input, chat_history, user_name, selected_document_id)
         chat_history.append(gr.ChatMessage(role="assistant", content=response))
         return chat_history
     except Exception as e:

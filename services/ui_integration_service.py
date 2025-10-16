@@ -212,8 +212,8 @@ class UIIntegrationService:
             error_msg = f"Error updating loader strategy: {str(e)}"
             logger.error(error_msg)
             return f"❌ {error_msg}"
-    
-    def handle_chat_query(self, query: str, chat_history: List, username: str) -> str:
+
+    def handle_chat_query(self, query: str, chat_history: List, username: str, selected_document_id: str) -> str:
         """
         Handle chat queries using Agent Service.
         
@@ -221,6 +221,7 @@ class UIIntegrationService:
             query: User query
             chat_history: Current chat history
             username: Username for user-specific operations
+            selected_document_id: Document ID selected by user for context
         Returns:
             Response string from the agent
         """
@@ -238,7 +239,7 @@ class UIIntegrationService:
                     return error_response
             
             # Use agent service to handle the chat
-            response = self.agent_service.handle_chat_query(query, chat_history, username)
+            response = self.agent_service.handle_chat_query(query=query, username=username, selected_document_id=selected_document_id, chat_history=chat_history)
             
             return response
             

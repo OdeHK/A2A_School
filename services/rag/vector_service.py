@@ -75,11 +75,21 @@ class VectorService:
             self.vectorstore.add_documents(documents)
         return self.vectorstore
     
-    def similarity_search(self, query: str, k: int = 4):
-        """Tìm kiếm tài liệu tương tự"""
+    def similarity_search(self, query: str, k: int = 4, filter: Optional[dict] = None):
+        """
+        Tìm kiếm tài liệu tương tự với khả năng lọc theo metadata.
+        
+        Args:
+            query: Câu truy vấn
+            k: Số lượng kết quả trả về
+            filter: Dictionary chứa điều kiện lọc metadata (vd: {"document_id": "doc_123", "username": "user1"})
+            
+        Returns:
+            List[Document]: Danh sách tài liệu tương tự
+        """
         if not self.vectorstore:
             raise ValueError("Vector store chưa được khởi tạo")
-        return self.vectorstore.similarity_search(query, k=k)
+        return self.vectorstore.similarity_search(query, k=k, filter=filter)
     
 if __name__ == "__main__":
     # Example 1: Using default embedding service
