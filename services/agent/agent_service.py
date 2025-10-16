@@ -31,6 +31,7 @@ class ParentGraphState(TypedDict):
     answer: Optional[str]  # Add answer field for quiz and rag results
     route: str 
     username: str  # Add username field for user-specific operations 
+    selected_document_id: str  # Add selected_document_id field for user-specific operations
 
 class TeacherAgent:
     """
@@ -75,6 +76,7 @@ class TeacherAgent:
             route = routing_chain.invoke({"user_request": state["user_request"]})
             logger.info(f" -> Lộ trình được quyết định: '{route}'")
             
+            # TODO: Cập nhật lại summarize node để xóa bở phần này =======
             document_library = self.document_management_service.get_document_library(username=username)
             
             find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
@@ -87,24 +89,25 @@ class TeacherAgent:
             print(f"Matched document: {matched_document}")
             if matched_document is None:
                 logger.warning("Không tìm thấy tài liệu phù hợp trong thư viện.")
-            return {"route": route,"matched_document":matched_document}
+            # ============================================================
+            return {"route": route, "matched_document": matched_document}
 
         def summarizer_node(state: ParentGraphState):
             """Thực thi subgraph tóm tắt."""
             logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
             
             # Get content data instead of table of contents
-            document_id = state["matched_document"]["document_id"]
+            selected_document_id = state["selected_document_id"]
             title = state["matched_document"]["title"][0]
             username = state["username"]
-            
-            logger.info(f"Getting content for document_id: {document_id}, title: {title}, username: {username}")
-            
+
+            logger.info(f"Getting content for document_id: {selected_document_id}, title: {title}, username: {username}")
+
             # Get content data which contains the actual content
-            content_data = self.document_management_service.get_content_data(username=username, document_id=document_id)["content"]
-            
+            content_data = self.document_management_service.get_content_data(username=username, document_id=selected_document_id)["content"]
+
             if not content_data:
-                logger.warning(f"No content data found for document: {document_id}")
+                logger.warning(f"No content data found for document: {selected_document_id}")
                 return { "answer": "Không tìm thấy nội dung để tóm tắt."}
             
             # Find content by title
@@ -128,15 +131,29 @@ class TeacherAgent:
             return {"answer": summary.content}
 
         def rag_qa_node(state: ParentGraphState):
-            """Trả lời câu hỏi dựa trên tài liệu (RAG)."""
+            """Trả lời câu hỏi dựa trên tài liệu (RAG) với metadata filtering."""
             logger.info("--- 2c. EXECUTING: Subgraph RAG Q&A ---")
             query = state["user_request"]
-            logger.info(f"RAG Q&A query: {query}")
+            username = state["username"]
+            selected_document_id = state["selected_document_id"]
+
+            logger.info(f"RAG Q&A query: {query}, username: {username}, document_id: {selected_document_id}")
             try:
                 if not query or not query.strip():
                     logger.warning("Câu hỏi không hợp lệ. Vui lòng nhập lại.")
                     return {"answer": "Câu hỏi không hợp lệ. Vui lòng nhập lại."}
-                response = self.rag_service.generate_rag_response(query)
+                
+                # Prepare metadata filter for document-specific and user-specific queries
+                metadata_filter = {
+                    "$and": [
+                        {"document_id": selected_document_id},
+                        {"username": username}
+                    ]
+                }
+                logger.info(f"Applying metadata filter: {metadata_filter}")
+                
+                # Generate RAG response with metadata filtering
+                response = self.rag_service.generate_rag_response(query, filter=metadata_filter)
                 logger.info(f"RAG Q&A response: {response}")
                 return {"answer": response}
             except Exception as e:
@@ -144,36 +161,30 @@ class TeacherAgent:
                 return {"answer": f"Đã xảy ra lỗi khi xử lý câu hỏi: {str(e)}"}
 
         def quiz_generation_node(state: ParentGraphState):
-            """Sinh câu hỏi kiểm tra dựa trên tài liệu."""
+            """Sinh câu hỏi kiểm tra dựa trên tài liệu với metadata filtering."""
             logger.info("--- 2d. EXECUTING: Subgraph Quiz Generation ---")
             user_request = state["user_request"]
             username = state["username"]
-            logger.info(f"Quiz generation username: {username}, user_request: {user_request}")
-            # TODO: Vì hiện tại chỉ xử lý với một tài liệu duy nhất nên tạm thời lấy document_id đầu tiên trong session
-            # Sau này cần bổ sung khả năng lấy document_id linh hoạt hơn
+            selected_document_id = state["selected_document_id"]
+
+            logger.info(f"Quiz generation username: {username}, user_request: {user_request}, selected_document_id: {selected_document_id}")
+
             try:
-                document_id_dict = self.document_management_service.get_document_id_dict(username=username)
-                if not document_id_dict:
-                    logger.warning(f"No documents found for user: {username}")
-                    return {"answer": "Không tìm thấy tài liệu nào để tạo đề kiểm tra. Vui lòng upload tài liệu trước."}
-                    
-                first_document_id = next(iter(document_id_dict))
-                document_id = first_document_id
-                logger.info(f"Selected document_id: {document_id}")
-                if not document_id or not user_request:
+                if not selected_document_id or not user_request:
                     logger.warning("Cần cung cấp document_id và yêu cầu người dùng.")
                     return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
 
                 # Get table of contents
-                toc_string = self.document_management_service.get_table_of_contents_as_string(username=username, document_id=document_id)
+                toc_string = self.document_management_service.get_table_of_contents_as_string(username=username, document_id=selected_document_id)
                 logger.info(f"TOC string: {toc_string}")
                 if not toc_string:
-                    logger.warning(f"Không tìm thấy mục lục cho tài liệu: {document_id}")
-                    return {"answer": f"Không tìm thấy mục lục cho tài liệu: {document_id}"}
+                    logger.warning(f"Không tìm thấy mục lục cho tài liệu: {selected_document_id}")
+                    return {"answer": f"Không tìm thấy mục lục cho tài liệu: {selected_document_id}"}
 
-                # Generate quiz
+                # Generate quiz with username for metadata filtering
                 result = self.quiz_generation_service.generate_quiz_set(
-                    document_id=document_id,
+                    document_id=selected_document_id,
+                    username=username,
                     user_request=user_request,
                     toc_data=toc_string
                 )
@@ -356,14 +367,15 @@ class TeacherAgent:
         
         return link_form
 
-    def handle_chat_query(self, query: str, chat_history: Optional[List] = None, username: str = "default_user") -> str:
+    def handle_chat_query(self, query: str, username: str, selected_document_id: str, chat_history: Optional[List] = None) -> str:
         """
         Handle a chat query by routing to the appropriate subgraph.
         Args:
             query: The user's query string.
             chat_history: Optional list of previous chat messages.
             username: Username for user-specific operations.
-        
+            selected_document_id: The ID of the document selected by the user.
+
         Returns:
             The response string from the agent.
         """
@@ -377,7 +389,8 @@ class TeacherAgent:
                 "table_of_contents": None,
                 "answer": None,
                 "route": "",
-                "username": username
+                "username": username,
+                "selected_document_id": selected_document_id
             }
 
             # Invoke the workflow

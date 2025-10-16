@@ -35,6 +35,7 @@ class CustomPydanticOutputParser(PydanticOutputParser):
 # ====== Graph State =========
 class QuizGenerationState(TypedDict):
     document_id: str
+    username: str  
     detail_table_of_contents: str
     user_request: str
     section_tasks: PlanTaskOutputList  # Tasks cho map-reduce
@@ -53,12 +54,14 @@ class QuizGenerationService:
 
     def generate_quiz_set(self, 
                         document_id: str,
+                        username: str,
                         user_request: str,
                         toc_data: str) -> str:
         """
         Main entry point để sinh bộ đề MCQ
         Args:
             document_id: ID của tài liệu tham khảo
+            username: Username for metadata filtering
             user_request: Yêu cầu của giáo viên
             toc_data: Dữ liệu mục lục chi tiết của tài liệu
         Returns:
@@ -67,11 +70,13 @@ class QuizGenerationService:
         logger.info("========================================")
         logger.info("QUIZ GENERATION WORKFLOW START")
         logger.info(f"Document ID: {document_id}")
+        logger.info(f"Username: {username}")
         logger.info(f"User Request: {user_request}")
         logger.info("========================================")
         
         initial_state: QuizGenerationState = {
             "document_id": document_id,
+            "username": username,
             "detail_table_of_contents": toc_data,
             "user_request": user_request,
             "section_tasks": PlanTaskOutputList(tasks=[]),
@@ -171,10 +176,15 @@ class QuizGenerationService:
             return {**state, "section_tasks": section_tasks}
 
         def map_generate_with_service(state: QuizGenerationState) -> Dict[str, Any]:
-            """Map generate with access to rag_service"""
+            """Map generate with access to rag_service and metadata filtering"""
             logger.info("=== MAP GENERATE NODE START ===")
             section_tasks = state.get("section_tasks", PlanTaskOutputList(tasks=[]))
+            document_id = state.get("document_id")
+            username = state.get("username")
+            
             logger.info(f"Số lượng sections cần xử lý: {len(section_tasks.tasks)}")
+            logger.info(f"Document ID: {document_id}, Username: {username}")
+            
             generated_questions = QuizQuestionOutput(questions=[])
             
             for i, task in enumerate(section_tasks.tasks):
@@ -196,12 +206,23 @@ class QuizGenerationService:
 
                     else:
                         logger.info(f"Retrieving documents for query: {task.query_string}")
-                        # TODO: có thể refract code vecto_service.py để thống nhất vector_service
-                        retriever = self.rag_service.vector_service.vectorstore.as_retriever(
-                            search_kwargs={"k": 5}
+                        
+                        # Prepare metadata filter for document-specific and user-specific queries
+                        metadata_filter = {
+                            "$and": [
+                                {"document_id": document_id},
+                                {"username": username}
+                            ]
+                        }
+                        logger.info(f"Applying metadata filter: {metadata_filter}")
+                        
+                        # Use retrieve_documents with metadata filtering
+                        relevant_docs = self.rag_service.retrieve_documents(
+                            query=task.query_string,
+                            top_k=5,
+                            filter=metadata_filter
                         )
                         
-                        relevant_docs = retriever.invoke(task.query_string)
                         logger.info(f"Retrieved {len(relevant_docs)} documents")
                         logger.info(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
 
