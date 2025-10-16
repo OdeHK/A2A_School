@@ -154,8 +154,6 @@ class UIIntegrationService:
                    f"🔪 Số đoạn: {result.metadata.chunk_count if result.metadata else 'N/A'}\n")
         except Exception as e:
             return f"❌ Error: {str(e)}", "Error"
-        
-
     
     def handle_url_input(self, url: str) :
         """
