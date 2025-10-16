@@ -26,7 +26,6 @@ logger.setLevel(logging.INFO)
 # --- Định nghĩa State cho Parent Graph ---
 class ParentGraphState(TypedDict):
     user_request: str
-    matched_document : dict
     table_of_contents: Optional[list]
     answer: Optional[str]  # Add answer field for quiz and rag results
     route: str 
@@ -76,9 +75,17 @@ class TeacherAgent:
             route = routing_chain.invoke({"user_request": state["user_request"]})
             logger.info(f" -> Lộ trình được quyết định: '{route}'")
             
-            # TODO: Cập nhật lại summarize node để xóa bở phần này =======
+            return {"route": route}
+
+        def summarizer_node(state: ParentGraphState):
+            """Thực thi subgraph tóm tắt."""
+            logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
+            selected_document_id = state["selected_document_id"]
+            username = state["username"]
+
+            # Check which section to summarize
             document_library = self.document_management_service.get_document_library(username=username)
-            
+            llm = self.llm_service.get_llm()
             find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
             library_str = json.dumps(document_library, indent=2)
             matched_document = find_document_chain.invoke({
@@ -86,22 +93,10 @@ class TeacherAgent:
                 "user_request": state["user_request"]
             })
             logger.info(f"Matched document: {matched_document}")
-            print(f"Matched document: {matched_document}")
             if matched_document is None:
                 logger.warning("Không tìm thấy tài liệu phù hợp trong thư viện.")
-            # ============================================================
-            return {"route": route, "matched_document": matched_document}
+                return {"answer": "Không tìm thấy nội dung bạn đề cập."}
 
-        def summarizer_node(state: ParentGraphState):
-            """Thực thi subgraph tóm tắt."""
-            logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
-            
-            # Get content data instead of table of contents
-            selected_document_id = state["selected_document_id"]
-            title = state["matched_document"]["title"][0]
-            username = state["username"]
-
-            logger.info(f"Getting content for document_id: {selected_document_id}, title: {title}, username: {username}")
 
             # Get content data which contains the actual content
             content_data = self.document_management_service.get_content_data(username=username, document_id=selected_document_id)["content"]
@@ -111,6 +106,7 @@ class TeacherAgent:
                 return { "answer": "Không tìm thấy nội dung để tóm tắt."}
             
             # Find content by title
+            title = matched_document["title"][0]
             extracted_content = None
             for content_item in content_data:
                 if content_item.get("title") == title:
@@ -385,7 +381,6 @@ class TeacherAgent:
             # Prepare state for workflow
             state: ParentGraphState = {
                 "user_request": query,
-                "matched_document": {}, 
                 "table_of_contents": None,
                 "answer": None,
                 "route": "",
