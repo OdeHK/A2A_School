@@ -358,5 +358,10 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
-    demo.queue()
-    demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
+    try:
+        demo.queue()
+        demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
+    finally:
+        logger.info("Shutting down the application...")
+        ui_service.cleanup()  # Perform any necessary cleanup actions
+        logger.info("Application has been shut down gracefully.")
