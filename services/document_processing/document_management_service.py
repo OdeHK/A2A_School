@@ -136,7 +136,7 @@ class DocumentManagementService:
 
             # Chunk documents
             logger.info("Chunking documents...")
-            chunks = self.chunker.chunk(iter(docs_list))
+            chunks = self.chunker.chunk(iter(docs_list), document_id=document_id, username=username)
             
             if not chunks:
                 raise ValueError("No chunks were created from the documents")
@@ -595,7 +595,7 @@ class DocumentManagementService:
         Returns:
             Document information or None if not found
         """
-        return self.database_service.get_document_from_library(user_id="khiemdangle", name=name) #TODO: replace user_id
+        return self.database_service.get_document_from_library(username="khiemdangle", name=name) #TODO: replace user_id
     
     # def get_document_library_summary(self) -> Dict[str, Any]:
     #     """
