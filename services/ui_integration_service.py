@@ -78,6 +78,7 @@ class UIIntegrationService:
         except Exception as e:
             self.database_service = None
             logger.error(f"Error initializing database service: {str(e)}")
+            raise e 
 
     def _initialize_document_management_service(self):
         """
