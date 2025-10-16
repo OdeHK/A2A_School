@@ -1,5 +1,7 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
+from pymongo.collection import Collection
+from pymongo.database import Database
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from services.models import (
@@ -22,22 +24,36 @@ class DatabaseService:
     
     def __init__(self) -> None:
         """
-        Initialize database connection and collections.
+        Initialize database service and establish connection.
+        
+        Raises:
+            ConnectionFailure: If database connection fails
+        """
+        # Load settings from environment
+        self.settings = get_settings()
+        self.client: Optional[MongoClient] = None
+        self.db: Optional[Database] = None
+        self.users_collection: Optional[Collection] = None
+        self.documents_collection: Optional[Collection] = None
+        
+        # Establish initial connection
+        self._connect()
+    
+    def _connect(self) -> None:
+        """
+        Establish connection to MongoDB database.
         
         Raises:
             ConnectionFailure: If database connection fails
         """
         try:
-            # Load settings from environment
-            settings = get_settings()
-            
             # Configure DNS resolver
             dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
             dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']  
 
             # Get MongoDB URI from settings
-            uri = settings.mongodb_uri
-            database_name = settings.mongodb_database_name
+            uri = self.settings.mongodb_uri
+            database_name = self.settings.mongodb_database_name
             
             # Create a new client and connect to the server
             self.client = MongoClient(uri, server_api=ServerApi('1'))
@@ -49,7 +65,6 @@ class DatabaseService:
             self.users_collection = self.db.get_collection("users")
             self.documents_collection = self.db.get_collection("documents")
             
-            
             logger.info("Database connection established successfully")
             
         except ConnectionFailure as e:
@@ -58,6 +73,35 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"An error occurred while connecting to the database: {e}")
             raise
+    
+    def _ensure_connection(self) -> None:
+        """
+        Ensure database connection is active. Reconnect if necessary.
+        
+        Raises:
+            ConnectionFailure: If reconnection fails
+        """
+        try:
+            if self.client is None:
+                logger.warning("No database client found, attempting to reconnect...")
+                self._connect()
+                return
+            
+            # Test if connection is alive
+            self.client.admin.command('ismaster')
+            
+        except Exception as e:
+            logger.warning(f"Database connection lost: {e}. Attempting to reconnect...")
+            try:
+                self._connect()
+                logger.info("Database reconnection successful")
+            except Exception as reconnect_error:
+                logger.error(f"Database reconnection failed: {reconnect_error}")
+                raise ConnectionFailure(f"Failed to reconnect to database: {reconnect_error}")
+        
+        # Ensure collections are initialized
+        if self.documents_collection is None or self.users_collection is None:
+            raise ConnectionFailure("Collections not initialized properly")
 
     def health_check(self) -> bool:
         """
@@ -67,7 +111,7 @@ class DatabaseService:
             True if connection is healthy, False otherwise
         """
         try:
-            self.client.admin.command('ismaster')
+            self._ensure_connection()
             return True
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
@@ -84,6 +128,9 @@ class DatabaseService:
             metadata: DocumentMetadata object to save
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             # Convert metadata to dict and add username
             metadata_dict = metadata.model_dump(mode='json') #TODO: check DocumentMetadata
             metadata_dict['username'] = username
@@ -114,6 +161,9 @@ class DatabaseService:
             DocumentMetadata object or None if not found
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             # Fetch only fields defined in DocumentMetadata
             result = self.documents_collection.find_one(
                 filter={"document_id": document_id, "username": username},
@@ -189,6 +239,9 @@ class DatabaseService:
             content_data: Content data dict from TOCExtractionResult
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.update_one(
                 filter={"document_id": document_id, "username": username},
                 update={"$set": {"short_content": content_data}}, #TODO: check content_data structure
@@ -212,6 +265,9 @@ class DatabaseService:
             Content data dict or None if not found
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.find_one(
                 filter={"document_id": document_id, "username": username},
                 projection={"short_content": 1, "_id": 0}
@@ -235,6 +291,9 @@ class DatabaseService:
             toc_structure: TOC structure dict from TOCExtractionResult
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.update_one(
                 filter={"document_id": document_id, "username": username},
                 update={"$set": {"table_of_contents": toc_structure}},
@@ -258,6 +317,9 @@ class DatabaseService:
             TOC structure list or None if not found
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.find_one(
                 filter={"document_id": document_id, "username": username},
                 projection={"table_of_contents": 1, "_id": 0}
@@ -281,6 +343,9 @@ class DatabaseService:
             document_library: Dictionary with document_name as key and document info as value
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.update_one(
                 filter={"username": username},
                 update={
@@ -308,6 +373,9 @@ class DatabaseService:
             Dictionary with document_name as key and document info as value, or empty dict if not found
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.find_one(
                 filter={"username": username},
                 projection={"document_library": 1, "_id": 0}
@@ -408,6 +476,9 @@ class DatabaseService:
             List of DocumentMetadata objects
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             cursor = self.documents_collection.find(
                 filter={"username": username},
                 projection={"_id": 0, "username": 0}
@@ -439,6 +510,9 @@ class DatabaseService:
             True if document exists, False otherwise
         """
         try:
+            self._ensure_connection()
+            assert self.documents_collection is not None
+            
             result = self.documents_collection.find_one(
                 filter={"document_id": document_id, "username": username},
                 projection={"_id": 1}
@@ -591,6 +665,9 @@ class DatabaseService:
             True if authentication successful, False otherwise
         """
         try:
+            self._ensure_connection()
+            assert self.users_collection is not None
+            
             user = self.users_collection.find_one({
                 "username": username,
                 "password": password
