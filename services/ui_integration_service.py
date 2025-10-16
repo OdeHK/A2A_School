@@ -467,3 +467,14 @@ class UIIntegrationService:
             "documents_processed": len(self.processing_status)
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
+    def cleanup(self):
+        """
+        Cleanup all initialized service objects to release resources.
+        """
+        del self.rag_service
+        del self.doc_management_service
+        del self.quiz_generation_service
+        del self.agent_service
+        del self.database_service
+        del self.processing_status
+        logger.info("UIIntegrationService resources have been cleaned up.")
