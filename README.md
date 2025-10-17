@@ -19,6 +19,42 @@ Các tính năng dự kiến:
 - **Thêm khả năng sử dụng các công cụ bên ngoài**: Agent có thể truy cập và sử dụng các API bên ngoài như: Google Forms, Google Classroom,...
 - **Phân tích kết quả bài kiểm tra**: Phân tích các phần kiến thức học sinh còn yếu dựa trên kết quả bài kiểm tra
 
+## Sơ đồ hoạt động
+**Tính năng đăng nhập và tải lại danh sách tài liệu của người dùng**
+```mermaid
+sequenceDiagram
+  actor A1 as User
+  participant GR as Gradio (app.py)
+  participant BE as UI Intergration Service
+  participant DS as Database Service
+  participant MA as Mongo Atlas
+  title User Login and Document List Retrieval
+
+  GR ->> A1: Show login prompt (username & password)
+  A1 ->> GR: Submit credentials
+  GR ->> BE: Request authentication (username, password)
+  BE ->> DS: Request authentication
+  DS ->> MA: Query user collection (MongoDB)
+  MA -->> DS: Return user record / not found
+  DS -->> BE: Authentication result (success / failure)
+  BE -->> GR: Return authentication outcome
+  Note left of GR: On success, Gradio stores username in `gr.State` and shows app UI
+
+  alt Authentication success
+    GR ->> BE: Request user's document list
+    BE ->> DS: Request user's document list
+    DS ->> MA: Query documents for user
+    MA -->> DS: Return document list
+    DS -->> BE: Return document list
+    BE -->> GR: Provide document list (filenames shown in UI)
+  else Authentication failed
+    BE -->> GR: Return error message (invalid credentials)
+  end
+```
+
+
+
+
 ## 🏗️ Kiến trúc hệ thống
 
 ### Core Services
@@ -72,13 +108,11 @@ LOGS_DIR=./logs
 python ui/app.py
 ```
 
-Sau khi chạy, mở browser và truy cập: `http://127.0.0.1:7860`
+Sau khi chạy, mở browser và truy cập: `http://127.0.0.1:7860` 
+
 
 ## 📖 Hướng dẫn sử dụng
-
-### 1. Cấu hình (Sidebar) 
-- **Loader**: Chọn phương thức load tài liệu (Base, OCR, Base+OCR) 
-- **Chunker**: Chọn chiến lược chia nhỏ tài liệu
+### 1. Đăng nhập vào ứng dụng với tại khoản được cung cấp
 
 ### 2. Upload tài liệu
 - Click "Upload a File" để chọn file PDF
