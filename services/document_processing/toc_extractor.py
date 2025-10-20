@@ -14,7 +14,7 @@ from datetime import datetime
 from dataclasses import dataclass, asdict        
 
 # Import from existing TOC system
-from services.summarizer.TOC_generator import TOCGenerator, BookmarkNode, TaskType, TOCStrategyFactory
+from services.summarization.TOC_generator import TOCGenerator, BookmarkNode, TaskType, TOCStrategyFactory
 
 logger = logging.getLogger(__name__)
 

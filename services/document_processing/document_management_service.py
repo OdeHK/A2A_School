@@ -160,6 +160,9 @@ class DocumentManagementService:
                 try:
                     # Extract titles from TOC structure - now it's nested format
                     document_titles = self._extract_titles_from_toc_structure(extraction_result.toc_structure.sections)
+                    idx = document_titles.index("full_document")
+                    document_titles = document_titles[:idx+1]
+                    
                 except Exception as e:
                     logger.warning(f"Could not extract titles for document library: {e}")
             

@@ -1,8 +1,3 @@
-"""
-Pure TextRank Summarization Strategy (No LLM)
-Efficient content extraction for use with downstream LLM processing
-"""
-
 from typing import Dict, List, Optional, Any
 import logging
 import numpy as np
@@ -10,7 +5,11 @@ import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
 from langchain_huggingface import HuggingFaceEmbeddings
 
+<<<<<<<< HEAD:services/summarizer/textrank_summarizer.py
 from services.summarizer.token_manager import TokenManager, create_token_manager
+========
+from services.summarization.token_manager import TokenManager, create_token_manager
+>>>>>>>> e0b4257 (create summarization folder, create summarization  serivce,and use  short term memory):services/summarization/textrank_summarizer.py
 from config.settings import get_settings
 from config.constants import ModelConstants
 
@@ -176,6 +175,26 @@ class HybridSummarizerStrategy:
             logger.warning(f"TextRank selection failed: {e}, using simple selection")
             # Fallback to simple selection
             return chunks[:3]
+        finally:
+            # 🧹 Cleanup temporary tensors ONLY — keep model on GPU
+            try:
+                import torch
+
+                # delete only large intermediate tensors
+                if chunk_embeddings is not None:
+                    del chunk_embeddings
+                if similarity_matrix is not None:
+                    del similarity_matrix
+
+                # clear unused GPU cache (does NOT remove model)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
+
+                logger.debug("Temporary GPU tensors cleared (model retained on VRAM)")
+
+            except Exception as cleanup_error:
+                logger.warning(f"GPU memory cleanup failed: {cleanup_error}")
     
     def _boost_title_relevance(self, chunks: List[str], pagerank_scores: Dict, title: str) -> Dict:
         """
