@@ -84,7 +84,7 @@ class SummarizerStrategy(TOCContentStrategy):
         """
         self.embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
-            cache_folder=ModelConstants.HUGGINGFACE_CACHE_DIR,
+            cache_folder=ModelConstants.get_huggingface_cache_dir(),
             model_kwargs={"trust_remote_code": True, 
                           "device": None}
         )
