@@ -501,6 +501,29 @@ class DatabaseService:
             logger.error(f"Error saving quiz set: {e}")
             return False
 
+    def get_quizset(self, username: str) -> Optional[QuizQuestionOutput]:
+        """
+        Retrieve quiz set for a specific user.
+        
+        Args:
+            username: User identifier
+
+        Returns:
+            QuizQuestionOutput object or None if not found
+        """
+
+        try:
+            self._ensure_connection()
+            result = self.quizset_collection.find_one(
+                filter={"username": username},
+                projection={"_id": 0, "username": 0}
+            )
+            if result:
+                return QuizQuestionOutput(**result)
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving quiz set: {e}")
+            return None
 
     def authenticate_user(self, username: str, password: str) -> bool:
         """
