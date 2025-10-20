@@ -1,4 +1,5 @@
 import logging
+import shutil
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from apiclient import discovery
@@ -440,10 +441,43 @@ class UIIntegrationService:
             "agent_service_initialized": self.agent_service is not None,
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
+    def delete_temp_folder_for_user(self, username: str):
+        """
+        Delete the temporary folder for a specific user.
+        
+        Args:
+            username: The username whose temp folder should be deleted
+        """
+        try:
+            user_temp_folder = Path(StorageConstants.get_user_session_dir(username))
+            if user_temp_folder.exists():
+                shutil.rmtree(user_temp_folder)
+                logger.info(f"Deleted temporary folder for user: {username}")
+            else:
+                logger.info(f"No temporary folder found for user: {username}")
+        except Exception as e:
+            logger.error(f"Error deleting temporary folder for user {username}: {str(e)}")
+
+    def delete_temp_folder_for_all_users(self):
+        """
+        Delete the temporary folder for all users.
+        """
+        try:
+            session_temp_dir = Path(StorageConstants.SESSION_TEMP_DIR)
+            if session_temp_dir.exists():
+                shutil.rmtree(session_temp_dir)
+                logger.info("Deleted temporary folders for all users.")
+            else:
+                logger.info("No session temporary directory found.")
+        except Exception as e:
+            logger.error(f"Error deleting temporary folders for all users: {str(e)}")
+
+            
     def cleanup(self):
         """
         Cleanup all initialized service objects to release resources.
         """
+        self.delete_temp_folder_for_all_users()
         del self.rag_service
         del self.doc_management_service
         del self.quiz_generation_service
