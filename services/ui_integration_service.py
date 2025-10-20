@@ -13,6 +13,7 @@ from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
 from services.agent.agent_service import TeacherAgent
+from config.constants import StorageConstants
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +297,8 @@ class UIIntegrationService:
             str: the Google account name if sign-in is successful,
         """
         try:
-            # TODO: Pass the username dynamically
-            temp_folder = Path("temp_data")
-            user_temp_folder = Path(f"temp_data/session_temp/{username}")
+            temp_folder = Path(StorageConstants.TEMP_DATA_DIR)
+            user_temp_folder = Path(StorageConstants.get_user_session_dir(username))
 
             if not user_temp_folder.exists():
                 user_temp_folder.mkdir(parents=True, exist_ok=True)
@@ -307,14 +307,14 @@ class UIIntegrationService:
                 "https://www.googleapis.com/auth/forms.body",
                 "https://www.googleapis.com/auth/userinfo.profile"
             ]
-            store = file.Storage(user_temp_folder / "token.json")
+            store = file.Storage(Path(StorageConstants.get_user_token_path(username)))
             try:
                 creds = store.get()
             except Exception:
                 creds = None
 
             if not creds or creds.invalid:
-                flow = client.flow_from_clientsecrets(temp_folder / "client_secret_vscode.json", SCOPES)
+                flow = client.flow_from_clientsecrets(Path(StorageConstants.CLIENT_SECRET_FILE), SCOPES)
                 creds = tools.run_flow(flow, store)
             
             # Lấy thông tin người dùng từ Google

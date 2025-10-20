@@ -21,6 +21,7 @@ from services.document_processing.document_management_service import DocumentMan
 from services.rag.llm_service import LLMService
 from services.agent.memory_manager import ShortTermMemory, MemoryEntry
 from services.models import QuizQuestionOutput
+from config.constants import StorageConstants
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
@@ -348,7 +349,7 @@ class TeacherAgent:
             str: Thông báo lỗi nếu chưa đăng nhập, None nếu đã đăng nhập
         """
 
-        token_path = Path(f"temp_data/session_temp/{username}") / "token.json"
+        token_path = Path(StorageConstants.get_user_token_path(username))
         
         store = file.Storage(token_path)
         try:
@@ -361,6 +362,7 @@ class TeacherAgent:
             return "Bạn hãy đăng nhập vào tài khoản Google và cấp quyền cho ứng dụng nhé!"
         
         # TODO: Kiểm tra token hết hạn chưa, nếu hết hạn thì yêu cầu đăng nhập lại
+        return None
         return None
 
     def _create_google_form(self, quizset_data: QuizQuestionOutput, username: str) -> str:
@@ -386,7 +388,7 @@ class TeacherAgent:
             raise Exception("Đã xảy ra lỗi khi chuyển đổi bộ câu hỏi sang dạng form. Vui lòng thử lại sau.")
         
         # 2. Xây dựng Google Forms service với authentication
-        store = file.Storage(Path(f"temp_data/session_temp/{username}/token.json").__str__())
+        store = file.Storage(StorageConstants.get_user_token_path(username))
         creds = store.get()
         
         DISCOVERY_DOC = "https://forms.googleapis.com/$discovery/rest?version=v1"
