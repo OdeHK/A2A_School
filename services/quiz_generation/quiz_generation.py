@@ -1,6 +1,7 @@
 from typing import TypedDict, Dict, Any, List, Optional
-from services.rag.rag_service import RagService
 from pydantic import Field
+from services.rag.rag_service import RagService
+from services.database_service import DatabaseService
 from services.models import PlanTaskOutput, PlanTaskOutputList, QuizQuestion, QuizQuestionOutput
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
@@ -46,10 +47,11 @@ class QuizGenerationState(TypedDict):
 class QuizGenerationService:
     """Main service điều phối việc sinh Quiz sử dụng LangGraph"""
 
-    def __init__(self, rag_service: RagService):
+    def __init__(self, rag_service: RagService, database_service: DatabaseService):
         self.rag_service = rag_service
         self.llm_service = rag_service.llm_service
         self.vector_service = rag_service.vector_service
+        self.database_service = database_service
         self.workflow = self._create_workflow()
 
     def generate_quiz_set(self, 
