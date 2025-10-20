@@ -567,6 +567,7 @@ class DatabaseService:
             
     def remove_quizsets(self) -> None:
         try:
+            self._ensure_connection()
             self.quizset_collection.delete_many({})
             logger.info("All quizsets have been removed from the database.")
         except Exception as e:
