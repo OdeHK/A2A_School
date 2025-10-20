@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 ui_service = UIIntegrationService()
 
 # Function to process uploaded document and add new URL
-def process_uploaded_document(file_path:str):
+def process_uploaded_document(file_path: str, session_state: dict):
     """Process the selected document through RAG pipeline"""
     try:
-        status_msg = ui_service.process_uploaded_document(file_path)
+        user_name = session_state.get("user_name", "default_user")
+        status_msg = ui_service.process_uploaded_document(file_path, user_name)
         logger.info(f"Document processing status: {status_msg}")
         return status_msg
     except Exception as e:
@@ -26,62 +27,71 @@ def process_uploaded_document(file_path:str):
         return error_msg
     
 def add_url_and_clear(new_url, current_file_list: List):
-    """Handle URL input and add to current list"""
-    try:
-        updated_list, cleared_url, status_msg = ui_service.handle_url_input(new_url)
-        logger.info(f"URL input status: {status_msg}")
-        return updated_list, cleared_url
-    except Exception as e:
-        logger.error(f"Error in add_url_and_clear: {str(e)}")
-        return current_file_list, ""
+    # """Handle URL input and add to current list"""
+    # try:
+    #     updated_list, cleared_url, status_msg = ui_service.handle_url_input(new_url)
+    #     logger.info(f"URL input status: {status_msg}")
+    #     return updated_list, cleared_url
+    # except Exception as e:
+    #     logger.error(f"Error in add_url_and_clear: {str(e)}")
+    #     return current_file_list, ""
+    pass
 
 
-# Function to process file list 
-def convert_file_list_to_checkbox(file_list: List):
-    # Chuyển đổi danh sách file thành choices cho CheckboxGroup
+# ==== Function to process file list =====
+def convert_file_list_to_checkbox(file_list: List) -> gr.CheckboxGroup:
+    """Convert list of files to gr.CheckboxGroup with single selection enforced"""
     if not file_list:
         return gr.CheckboxGroup(choices=[], value=[])
-    
-    choices = []
-    for idx, item in enumerate(file_list):
-        if hasattr(item, 'name'):  # File upload
-            choices.append(f"hello{item.name}")
-        else:  # URL
-            choices.append(f"{item}")
-    
-    return gr.CheckboxGroup(choices=choices, value=[])
 
-def update_file_list_choices():
-    """Get the current list of files"""
+    # Return CheckboxGroup with single selection enforced
+    return gr.CheckboxGroup(choices=file_list, value=[file_list[0]])
 
-    current_files = ui_service.get_current_files()
+def update_file_list_choices(session_state: dict) -> gr.CheckboxGroup:
+    """Get the current list of files for the user"""
+
+    user_name = session_state.get("user_name", "default_user")
+    current_files = ui_service.get_user_files(user_name)
     file_list_checkbox = convert_file_list_to_checkbox(current_files)
-    logger.info(f"Current files: {current_files}")
+    logger.info(f"Current files for {user_name}: {current_files}")
     return file_list_checkbox
 
-def handle_single_selection(selected_items):
+def handle_single_selection(selected_items: List[str]) -> List[str]:
     """Đảm bảo chỉ có thể chọn một nguồn duy nhất"""
+    logger.info(f"Selected items before enforcing single selection: {selected_items}")
     if len(selected_items) > 1:
         # Chỉ giữ lại item được chọn cuối cùng
         return [selected_items[-1]]
     return selected_items
 
-def handle_document_selection(selected_items):
+def handle_document_selection(selected_items: List[str], session_state: dict):
     """Handle document selection and update UI service"""
+    user_name = session_state.get("user_name", "default_user")
     try:
         if selected_items and len(selected_items) > 0:
             selected_filename = selected_items[0]  # Get the first (and only) selected item
-            status_msg = ui_service.set_selected_document(selected_filename)
+            
+            # Find document_id using ui_service
+            document_id, status_msg = ui_service.find_document_id_by_filename(user_name, selected_filename)
+            
             logger.info(f"Document selection status: {status_msg}")
-            return status_msg
+            
+            # Update session state with selected document information
+            updated_session_state = session_state.copy()
+            updated_session_state["selected_document_id"] = document_id
+            
+            return status_msg, updated_session_state
         else:
-            # No document selected
-            ui_service.set_selected_document("")
-            return "Chưa chọn tài liệu nào"
+            # No document selected - clear the session state
+            updated_session_state = session_state.copy()
+            updated_session_state["selected_document_id"] = None
+            
+            return "Chưa chọn tài liệu nào", updated_session_state
     except Exception as e:
         error_msg = f"Error in document selection: {str(e)}"
         logger.error(error_msg)
-        return error_msg
+        return error_msg, session_state
+
 
 # Function to handle loader and chunker dropdown changes
 def on_loader_change(loader_value):
@@ -119,23 +129,24 @@ def add_user_message_first(user_input, chat_history):
     return chat_history, ""
 
 
-def handle_chat_input(chat_history):
+def handle_chat_input(chat_history, session_state: dict):
     """Handle chat input and return response. 
     It receives the user input from the textbox and the current chat history, 
     then returns the updated chat history and clears the input box.
 
     Args:
-        user_input (str): The input text from the user.
-        chat_history (List[Tuple[str, str]]): The current chat history as a list of tuples.
+        chat_history (List[gr.ChatMessage]): The current chat history.
+        session_state (dict): Session state containing user information.
     Returns:
         List[gr.ChatMessage]: Updated chat history
 
     """
     # Get the last user input from chat history
     user_input = chat_history[-1].get("content") if chat_history else ""
-
+    user_name = session_state.get("user_name", "default_user")
+    selected_document_id = session_state.get("selected_document_id")
     try:
-        response = ui_service.handle_chat_query(user_input, chat_history)
+        response = ui_service.handle_chat_query(user_input, chat_history, user_name, selected_document_id)
         chat_history.append(gr.ChatMessage(role="assistant", content=response))
         return chat_history
     except Exception as e:
@@ -165,9 +176,42 @@ def handle_google_authentication():
         logger.error(f"Error during Google authentication: {str(e)}")
         gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
         return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
-        
 
+def authenticate(username, password):
+    """
+    Authenticate user credentials using UI integration service.
+    """
+    try:
+        # Use UI service to authenticate
+        is_authenticated = ui_service.authenticate_user(username, password)
+        
+        if is_authenticated:
+            logger.info(f"User {username} authenticated successfully")
+            return True
+        else:
+            logger.warning(f"Authentication failed for user: {username}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error during authentication: {str(e)}")
+        # Fallback to default admin credentials in case of error
+        if username == "admin" and password == "admin":
+            logger.info("Used fallback admin credentials")
+            return True
+        return False
+
+def save_user_name(request: gr.Request):
+    """Save the authenticated user's name for session tracking."""
+    return {"user_name": request.username}
+
+def create_greeting_message(session_state):
+    """Create a greeting message based on the user's name."""
+    user_name = session_state.get("user_name", "Người dùng")
+    gr.Info(message=f"Xin chào, {user_name}!", duration=5, title="Chào mừng")
+
+# Gradio UI setup
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
+    session_state = gr.State()
     with gr.Sidebar(open=False):
         side_bar_title = gr.Markdown(value="**Developer Setting**")
 
@@ -216,9 +260,8 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
             initial_message = [
                 gr.ChatMessage(role="assistant", content="👋 Xin chào! Tôi là trợ lý AI đắc lực của bạn!\n\n🔸 Tôi có thể giúp bạn:\n• Soạn bộ đề kiểm tra một cách chính xác\n• Tổng hợp và phân tích bài làm của học sinh\n• Quản lý lớp học thông qua Google Classroom\n\n**Để bắt đầu:** Upload tài liệu ở bên trái 📂 hoặc kết nối với dịch vụ Google ở bên phải 🔗")
             ]
-            
             chatbot = gr.Chatbot(
-                value=initial_message,
+                value=initial_message, # type: ignore
                 type="messages",
                 label="💬 Trò chuyện với AI",
                 show_label=True,
@@ -235,15 +278,30 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
                 google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google")
+        
+    # WHen loading the app,
+    demo.load(
+        fn=save_user_name,
+        inputs=[],
+        outputs=[session_state]
+    ).then(
+        fn=create_greeting_message,
+        inputs=[session_state],
+        outputs=[]
+    ).then(
+        fn=update_file_list_choices,
+        inputs=[session_state],
+        outputs=[file_list_checkbox]
+    )
 
     # Process file upload
     file_upload_btn.upload(
         fn=process_uploaded_document,
-        inputs=[file_upload_btn],
+        inputs=[file_upload_btn, session_state],
         outputs=[status_display]
     ).success(
         fn=update_file_list_choices,
-        inputs=[],
+        inputs=[session_state],
         outputs=[file_list_checkbox]
     )
 
@@ -254,8 +312,8 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=file_list_checkbox
     ).then(
         fn=handle_document_selection,
-        inputs=file_list_checkbox,
-        outputs=status_display
+        inputs=[file_list_checkbox, session_state],
+        outputs=[status_display, session_state]
     )
 
     # Chat functionality
@@ -265,7 +323,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[chatbot, user_input_textbox]
     ).then(
         fn=handle_chat_input,
-        inputs=[chatbot],
+        inputs=[chatbot, session_state],
         outputs=[chatbot]
     )
 
@@ -275,7 +333,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[chatbot, user_input_textbox]
     ).then(
         fn=handle_chat_input,
-        inputs=[chatbot],
+        inputs=[chatbot, session_state],
         outputs=[chatbot]
     )
 
@@ -300,4 +358,10 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
-    demo.launch()
+    try:
+        demo.queue()
+        demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
+    finally:
+        logger.info("Shutting down the application...")
+        ui_service.cleanup()  # Perform any necessary cleanup actions
+        logger.info("Application has been shut down gracefully.")

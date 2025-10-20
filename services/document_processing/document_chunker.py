@@ -55,12 +55,14 @@ class ChunkingStrategy(ABC):
     """Abstract base class for document chunking strategies."""
     
     @abstractmethod
-    def chunk(self, pages: Iterator[Document]) -> List[Document]:
+    def chunk(self, pages: Iterator[Document], document_id: str, username: str) -> List[Document]:
         """
         Chunk documents according to the specific strategy.
         
         Args:
             pages (Iterator[Document]): The pages to process.
+            document_id (str): The document identifier for metadata filtering.
+            username (str): The username for metadata filtering.
             
         Returns:
             List[Document]: The processed chunks.
@@ -89,12 +91,14 @@ class OnePagePerChunkStrategy(ChunkingStrategy):
     def strategy_name(self) -> str:
         return ChunkingStrategyType.ONE_PAGE_PER_CHUNK
     
-    def chunk(self, pages: Iterator[Document]) -> List[Document]:
+    def chunk(self, pages: Iterator[Document], document_id: str, username: str) -> List[Document]:
         """
         Convert each page to a separate chunk.
         
         Args:
             pages (Iterator[Document]): The pages to process.
+            document_id (str): The document identifier for metadata filtering.
+            username (str): The username for metadata filtering.
             
         Returns:
             List[Document]: List of documents where each represents one page.
@@ -103,8 +107,13 @@ class OnePagePerChunkStrategy(ChunkingStrategy):
         processed_chunks = []
         
         for page_number, page in enumerate(pages, start=1):
-            # Add page number to metadata
-            enhanced_metadata = {**page.metadata, "page_number": page_number}
+            # Add page number, document_id, and username to metadata
+            enhanced_metadata = {
+                **page.metadata, 
+                "page_number": page_number,
+                "document_id": document_id,
+                "username": username
+            }
             chunk = Document(
                 page_content=page.page_content,
                 metadata=enhanced_metadata
@@ -147,12 +156,14 @@ class RecursiveTextSplitStrategy(ChunkingStrategy):
     def strategy_name(self) -> str:
         return ChunkingStrategyType.RECURSIVE_SPLIT
     
-    def chunk(self, pages: Iterator[Document]) -> List[Document]:
+    def chunk(self, pages: Iterator[Document], document_id: str, username: str) -> List[Document]:
         """
         Split documents using recursive character splitting.
         
         Args:
             pages (Iterator[Document]): The pages to process.
+            document_id (str): The document identifier for metadata filtering.
+            username (str): The username for metadata filtering.
             
         Returns:
             List[Document]: The split chunks.
@@ -165,13 +176,15 @@ class RecursiveTextSplitStrategy(ChunkingStrategy):
         
         chunks = self.splitter.split_documents(page_list)
         
-        # Enhance metadata with chunk information
+        # Enhance metadata with chunk information, document_id, and username
         for i, chunk in enumerate(chunks):
             chunk.metadata.update({
                 "chunk_index": i,
                 "chunk_strategy": self.strategy_name,
                 "chunk_size": self.chunk_size,
-                "chunk_overlap": self.chunk_overlap
+                "chunk_overlap": self.chunk_overlap,
+                "document_id": document_id,
+                "username": username
             })
         
         logger.info(f"Created {len(chunks)} chunks using recursive splitting")
@@ -198,12 +211,14 @@ class LLMBasedChunkingStrategy(ChunkingStrategy):
     def strategy_name(self) -> str:
         return ChunkingStrategyType.LLM_SPLIT
     
-    def chunk(self, pages: Iterator[Document]) -> List[Document]:
+    def chunk(self, pages: Iterator[Document], document_id: str, username: str) -> List[Document]:
         """
         Chunk documents using LLM for semantic understanding.
         
         Args:
             pages (Iterator[Document]): The pages to process.
+            document_id (str): The document identifier for metadata filtering.
+            username (str): The username for metadata filtering.
             
         Returns:
             List[Document]: Semantically coherent chunks.
@@ -224,20 +239,29 @@ class LLMBasedChunkingStrategy(ChunkingStrategy):
             if page_count % self.pages_per_segment == 0:
                 logger.debug(f"Processing segment ending at page {page_number}")
                 thematic_blocks = self.llm_service.chunk_text(segments)
-                chunks.extend(self._convert_thematic_blocks_to_documents(thematic_blocks.thematic_group_list))
+                chunks.extend(self._convert_thematic_blocks_to_documents(
+                    thematic_blocks.thematic_group_list, document_id, username
+                ))
                 segments = ""
         
         # Process remaining pages if any
         if segments.strip():
             logger.debug(f"Processing final segment with {page_count % self.pages_per_segment} pages")
             thematic_blocks = self.llm_service.chunk_text(segments)
-            chunks.extend(self._convert_thematic_blocks_to_documents(thematic_blocks.thematic_group_list))
+            chunks.extend(self._convert_thematic_blocks_to_documents(
+                thematic_blocks.thematic_group_list, document_id, username
+            ))
         
         logger.info(f"Created {len(chunks)} semantic chunks using LLM")
         return chunks
     
-    def _convert_thematic_blocks_to_documents(self, thematic_blocks: List[ThematicBlock]) -> List[Document]:
-        """Convert ThematicBlock objects to LangChain Document objects."""
+    def _convert_thematic_blocks_to_documents(
+        self, 
+        thematic_blocks: List[ThematicBlock], 
+        document_id: str, 
+        username: str
+    ) -> List[Document]:
+        """Convert ThematicBlock objects to LangChain Document objects with metadata."""
         documents = []
         
         for block in thematic_blocks:
@@ -247,7 +271,9 @@ class LLMBasedChunkingStrategy(ChunkingStrategy):
                     "summary_title": block.summary_title,
                     "start_page_index": block.start_page_index,
                     "end_page_index": block.end_page_index,
-                    "chunk_strategy": self.strategy_name
+                    "chunk_strategy": self.strategy_name,
+                    "document_id": document_id,
+                    "username": username
                 }
             )
             documents.append(document)
@@ -444,12 +470,14 @@ class DocumentChunker:
         logger.info(f"Changing strategy from {self.strategy.strategy_name} to {strategy.strategy_name}")
         self.strategy = strategy
     
-    def chunk(self, pages: Iterator[Document]) -> List[Document]:
+    def chunk(self, pages: Iterator[Document], document_id: str, username: str) -> List[Document]:
         """
         Chunk documents using the current strategy.
         
         Args:
             pages (Iterator[Document]): The pages to process.
+            document_id (str): The document identifier for metadata filtering.
+            username (str): The username for metadata filtering.
             
         Returns:
             List[Document]: The chunked documents.
@@ -466,7 +494,7 @@ class DocumentChunker:
         logger.info(f"Chunking {len(page_list)} pages using {self.strategy.strategy_name}")
         
         # Convert back to iterator for strategy processing
-        result = self.strategy.chunk(iter(page_list))
+        result = self.strategy.chunk(iter(page_list), document_id, username)
         
         logger.info(f"Chunking completed. Created {len(result)} chunks.")
         return result
@@ -581,7 +609,7 @@ if __name__ == "__main__":
     
     # Process one page per chunk
     chunker = create_page_chunker()
-    chunks = chunker.chunk(pages)
+    chunks = chunker.chunk(pages, document_id="example_doc_123", username="test_user")
     print(f"Processed document into {len(chunks)} chunks")
     
     print("Strategy Pattern implementation completed successfully!")
