@@ -29,7 +29,6 @@ class UIIntegrationService:
         self.quiz_generation_service: Optional[QuizGenerationService] = None
         self.summarization_service: Optional[SummarizationService] = None
         self.agent_service: Optional[TeacherAgent] = None
-        self.processing_status: Dict[str, Any] = {}
         
         # Initialize services in correct order
         self._initialize_rag_service()
@@ -498,7 +497,6 @@ class UIIntegrationService:
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
             "summarization_service_initialized": self.summarization_service is not None,
             "agent_service_initialized": self.agent_service is not None,
-            "documents_processed": len(self.processing_status)
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
     def cleanup(self):
@@ -510,5 +508,4 @@ class UIIntegrationService:
         del self.quiz_generation_service
         del self.agent_service
         del self.database_service
-        del self.processing_status
         logger.info("UIIntegrationService resources have been cleaned up.")
