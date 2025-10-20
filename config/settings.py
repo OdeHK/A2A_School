@@ -50,6 +50,16 @@ class Settings(BaseSettings):
         description="Batch size used when adding embedding chunks to the vector store"
     )
 
+    # === MongoDB Configuration ===
+    mongodb_uri: str = Field(
+        default="",
+    )
+    
+    mongodb_database_name: str = Field(
+        default="agent_for_teacher",
+        description="MongoDB database name"
+    )
+
     logs_dir: str = Field(
         default="./logs",
         description="Directory to store application logs"

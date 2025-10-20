@@ -82,14 +82,16 @@ class RagService:
         self, 
         query: str, 
         top_k: int = 10,
+        filter: Optional[dict] = None,
         vector_service: Optional[VectorService] = None
     ) -> List[Document]:
         """
-        Retrieve relevant documents based on query.
+        Retrieve relevant documents based on query with optional metadata filtering.
         
         Args:
             query: Search query
             top_k: Number of top results to return
+            filter: Optional metadata filter (e.g., {"document_id": "doc_123", "username": "user1"})
             vector_service: Optional vector service to use (defaults to self.vector_service)
             
         Returns:
@@ -103,7 +105,7 @@ class RagService:
                 logger.warning("Vector store not initialized")
                 return []
                 
-            results = vector_service.similarity_search(query=query, k=top_k)
+            results = vector_service.similarity_search(query=query, k=top_k, filter=filter)
             logger.info(f"Retrieved {len(results)} documents for query: {query}")
             return results
             
@@ -111,12 +113,13 @@ class RagService:
             logger.error(f"Error retrieving documents: {str(e)}")
             return []
     
-    def generate_rag_response(self, query:str):
+    def generate_rag_response(self, query: str, filter: Optional[dict] = None):
         """
-        Generate a reponse from the LLM based on retrieved documents for the given query
+        Generate a response from the LLM based on retrieved documents for the given query.
 
         Args:
             query (str): The user query
+            filter (Optional[dict]): Metadata filter for document retrieval (e.g., {"document_id": "doc_123", "username": "user1"})
 
         Returns:
             str: The generated response or an appropriate message if no context is found
@@ -125,7 +128,7 @@ class RagService:
             logger.warning("Empty query received.")
             return "Câu hỏi không hợp lệ. Vui lòng nhập lại."
 
-        retrieved_documents = self.retrieve_documents(query)
+        retrieved_documents = self.retrieve_documents(query, filter=filter)
         if not retrieved_documents:
             logger.info("No relevant documents found for the query.")
             return "Không tìm thấy thông tin phù hợp trong tài liệu đã tải lên."
