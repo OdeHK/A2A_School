@@ -280,6 +280,7 @@ class QuizGenerationService:
             Node Aggregate: Tổng hợp kết quả từ tất cả Generate nodes
             """
             logger.info("=== AGGREGATE NODE START ===")
+            username = state.get("username")
             generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
             logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
@@ -288,8 +289,7 @@ class QuizGenerationService:
                 final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
             
                 # Write to file for record-keeping
-                QuizGenerationService._write_questions_to_file(questions=generated_questions)
-                logger.info("Written generated questions to file")
+                self._write_questions_to_database(username=username, questions=generated_questions)
             else:
                 final_questions = "Hiện tại không có câu hỏi nào được tạo ra. Bạn có thể thử lại hoặc điều chỉnh yêu cầu"
             
@@ -341,12 +341,6 @@ class QuizGenerationService:
 
         return str_output
     
-    @staticmethod
-    def _write_questions_to_file(questions: QuizQuestionOutput):
-        """Write generated questions to a JSON file for record-keeping"""
-        # TODO: Đây cách tiếp cận tạm thời, cần cải thiện sau
-        file_path = "session_data\\temp\\quiz_data.json" 
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(questions.model_dump(), f, ensure_ascii=False, indent=4)
-        logger.info(f"Generated questions written to {file_path}")
+    def _write_questions_to_database(self, username: str, questions: QuizQuestionOutput):
+        """Write generated questions to database"""
+        self.database_service.save_quizset(username=username, quizset=questions)
