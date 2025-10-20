@@ -163,7 +163,7 @@ class HuggingFaceStrategy(EmbeddingStrategy):
             **kwargs: Additional parameters for the embedding model.
         """
         self.model = model or ModelConstants.EMBEDDING_MODELS["huggingface"]
-        self.cache_folder = kwargs.get("cache_folder", ModelConstants.HUGGINGFACE_CACHE_DIR)
+        self.cache_folder = kwargs.get("cache_folder", ModelConstants.get_huggingface_cache_dir())
         self.huggingface_embedding = self.create_embedding()
         logger.info(f"Initialized HuggingFace embedding strategy with model: {self.model}")
 

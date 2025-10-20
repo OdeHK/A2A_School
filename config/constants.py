@@ -31,13 +31,17 @@ class ModelConstants:
         "google_gen_ai": "models/gemini-embedding-001",
         "huggingface": "Alibaba-NLP/gte-multilingual-base"
     }
-    
-    HUGGINGFACE_CACHE_DIR = "session_data/temp/huggingface_cache"
 
     # === Model limitations ===
     MAX_CONTEXT_LENGTHS = {
         "openai/gpt-oss-20b": 128000
     }
+    
+    # === Cache directory reference ===
+    @staticmethod
+    def get_huggingface_cache_dir() -> str:
+        """Lấy đường dẫn cache HuggingFace từ StorageConstants"""
+        return StorageConstants.HUGGINGFACE_CACHE_DIR
     
 
 
@@ -176,6 +180,29 @@ class DatabaseConstants:
     }
 
 
+class StorageConstants:
+    """Hằng số liên quan đến lưu trữ file tạm và session"""
+    
+    # === Temporary storage paths ===
+    TEMP_DATA_DIR = "temp_data"
+    SESSION_TEMP_DIR = "temp_data/session_temp"
+    HUGGINGFACE_CACHE_DIR = "temp_data/huggingface_cache"
+    
+    # === Authentication files ===
+    CLIENT_SECRET_FILE = "temp_data/client_secret_vscode.json"
+    TOKEN_FILE_NAME = "token.json"
+    
+    @staticmethod
+    def get_user_session_dir(username: str) -> str:
+        """Lấy đường dẫn folder session của user cụ thể"""
+        return f"{StorageConstants.SESSION_TEMP_DIR}/{username}"
+    
+    @staticmethod
+    def get_user_token_path(username: str) -> str:
+        """Lấy đường dẫn file token của user cụ thể"""
+        return f"{StorageConstants.get_user_session_dir(username)}/{StorageConstants.TOKEN_FILE_NAME}"
+
+
 # === Global configuration mappings ===
 def get_supported_file_extensions() -> List[str]:
     """Lấy danh sách extension được hỗ trợ"""
@@ -190,8 +217,3 @@ def get_llm_providers() -> List[str]:
 def get_chunking_strategies() -> List[str]:
     """Lấy danh sách chunking strategies"""
     return list(FileConstants.CHUNKING_STRATEGIES.keys())
-
-
-def get_agent_types() -> List[str]:
-    """Lấy danh sách agent types"""
-    return list(AgentConstants.AGENT_TYPES.keys())
