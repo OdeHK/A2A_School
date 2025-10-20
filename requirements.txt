@@ -10,6 +10,7 @@ langchain-huggingface
 langchain-chroma
 langchain-cohere
 langgraph
+langgraph-checkpoint-redis
 
 # -----------------------------
 # Token management & optimization
@@ -51,6 +52,3 @@ gradio
 # -----------------------------
 docling
 PyPDF2
-# pandas
-# openpyxl
-# python-docx
