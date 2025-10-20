@@ -31,7 +31,8 @@ class UIIntegrationService:
         self.quiz_generation_service = self._initialize_quiz_generation_service(rag_service=self.rag_service, database_service=self.database_service)
         self.agent_service = self._initialize_agent_service(rag_service=self.rag_service, 
                                                           quiz_generation_service=self.quiz_generation_service,
-                                                          document_management_service=self.doc_management_service)
+                                                          document_management_service=self.doc_management_service,
+                                                          database_service=self.database_service)
 
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> RagService:
         """
@@ -97,7 +98,7 @@ class UIIntegrationService:
             logger.error(f"Error initializing quiz generation service: {str(e)}")
             raise e
 
-    def _initialize_agent_service(self, rag_service: RagService, quiz_generation_service: QuizGenerationService, document_management_service: DocumentManagementService) -> TeacherAgent:
+    def _initialize_agent_service(self, rag_service: RagService, quiz_generation_service: QuizGenerationService, document_management_service: DocumentManagementService, database_service: DatabaseService) -> TeacherAgent:
         """
         Initialize the agent service with all required services.
         """
@@ -106,7 +107,8 @@ class UIIntegrationService:
                 rag_service=rag_service,
                 quiz_generation_service=quiz_generation_service,
                 document_management_service=document_management_service,
-                llm_service=self.rag_service.llm_service
+                llm_service=self.rag_service.llm_service,
+                database_service=database_service
             )
             logger.info("Agent service initialized successfully")
             return agent_service
@@ -161,11 +163,7 @@ class UIIntegrationService:
         try:
             # Reinitialize RAG service with new strategy
             self.rag_service = self._initialize_rag_service(strategy)
-            # Reinitialize quiz generation service with new RAG service
-            self.quiz_generation_service = self._initialize_quiz_generation_service(rag_service=self.rag_service, database_service=self.database_service)
-            # Reinitialize agent service with new services
-            self.agent_service = self._initialize_agent_service(rag_service=self.rag_service, quiz_generation_service=self.quiz_generation_service, document_management_service=self.doc_management_service)
-
+            
             return f"✅ Chunking strategy updated to: {strategy}"
         except Exception as e:
             error_msg = f"Error updating chunker strategy: {str(e)}"
@@ -289,7 +287,7 @@ class UIIntegrationService:
             return f"Có lỗi xảy ra khi đăng nhập vào tài khoản Google. Bạn hãy thử lại nhé!"
 
     # Sign in to Google account 
-    def open_sign_in_website(self) -> Tuple[bool, str]:
+    def open_sign_in_website(self, username: str) -> Tuple[bool, str]:
         """
         Open the Google sign-in website for authentication.
         
@@ -298,12 +296,18 @@ class UIIntegrationService:
             str: the Google account name if sign-in is successful,
         """
         try:
-            temp_folder = Path("session_data/temp")
+            # TODO: Pass the username dynamically
+            temp_folder = Path("temp_data")
+            user_temp_folder = Path(f"temp_data/session_temp/{username}")
+
+            if not user_temp_folder.exists():
+                user_temp_folder.mkdir(parents=True, exist_ok=True)
+
             SCOPES = [
                 "https://www.googleapis.com/auth/forms.body",
                 "https://www.googleapis.com/auth/userinfo.profile"
             ]
-            store = file.Storage(temp_folder / "token.json")
+            store = file.Storage(user_temp_folder / "token.json")
             try:
                 creds = store.get()
             except Exception:

@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, END
 
 from services.document_processing import document_library
 from services.summarization.prompt import router_prompt
+from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
@@ -19,6 +20,7 @@ from services.summarization.summarization import SummarizationService
 from services.document_processing.document_management_service import DocumentManagementService
 from services.rag.llm_service import LLMService
 from services.agent.memory_manager import ShortTermMemory, MemoryEntry
+from services.models import QuizQuestionOutput
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ class TeacherAgent:
             summarization_service,
             document_management_service,
             llm_service,
+            database_service, 
             enable_memory: bool = True):
         """
         Initialize the Teacher Agent with required services.
@@ -81,6 +84,7 @@ class TeacherAgent:
             self.memory = None
             logger.info("Memory disabled")
         
+        self.database_service = database_service
         self.workflow = self._create_workflow()
 
     def _create_workflow(self):
@@ -283,15 +287,22 @@ class TeacherAgent:
         def create_form_node(state: ParentGraphState):
             """Node chính để tạo Google Form từ quiz data."""
             logger.info("--- 2e. EXECUTING: Subgraph Create Google Form ---")
-            
+            username = state["username"]
+ 
             # Kiểm tra điều kiện trước khi tạo form
-            validation_result = self._validate_form_creation_prerequisites()
+            validation_result = self._check_google_authentication(username=username)
             if validation_result is not None:
+                logger.info(f"Người dùng {username} chưa đăng nhập.")
                 return {"answer": validation_result}
             
+            quizset_data = self.database_service.get_quizset(username=username)
+            if quizset_data is None:
+                logger.info("Chưa có bộ câu hỏi để tạo form.")
+                return {"answer": "Trước khi tạo bộ đề kiểm tra, mình sẽ giúp bạn tạo bộ câu hỏi nhé! Bạn muốn tạo bộ câu hỏi về chủ đề gì?"}
+
             # Tạo Google Form
             try:
-                form_link = self._create_google_form()
+                form_link = self._create_google_form(quizset_data=quizset_data, username=username)
                 return {"answer": f"Mình đã tạo xong Google Form cho bạn rồi nhé! Đây là đường dẫn của form: \n{form_link}"}
             except Exception as e:
                 error_msg = f"Error creating Google Form: {str(e)}"
@@ -329,37 +340,15 @@ class TeacherAgent:
         logger.info("TeacherAgent workflow graph compiled.")
         return workflow.compile()
 
-    def _validate_form_creation_prerequisites(self) -> Optional[str]:
-        """
-        Kiểm tra các điều kiện cần thiết trước khi tạo Google Form.
-        
-        Returns:
-            str: Thông báo lỗi nếu có, None nếu tất cả điều kiện đều thỏa mãn
-        """
-        temp_folder = Path("session_data/temp")
-        quiz_data_path = temp_folder / "quiz_data.json"
-        
-        # Kiểm tra file quiz_data.json có tồn tại không
-        if not quiz_data_path.exists():
-            logger.warning("File quiz_data.json không tồn tại. Vui lòng tạo đề trước.")
-            return "Trước khi tạo bộ đề kiểm tra, mình sẽ giúp bạn tạo bộ câu hỏi nhé! Bạn muốn tạo bộ câu hỏi về chủ đề gì?"
-        
-        # Kiểm tra người dùng đã đăng nhập chưa
-        auth_error = self._check_google_authentication()
-        if auth_error:
-            return auth_error
-            
-        return None
-
-    def _check_google_authentication(self) -> Optional[str]:
+    def _check_google_authentication(self, username: str) -> Optional[str]:
         """
         Kiểm tra trạng thái đăng nhập Google của người dùng.
         
         Returns:
             str: Thông báo lỗi nếu chưa đăng nhập, None nếu đã đăng nhập
         """
-        temp_folder = Path("session_data/temp")
-        token_path = temp_folder / "token.json"
+
+        token_path = Path(f"temp_data/session_temp/{username}") / "token.json"
         
         store = file.Storage(token_path)
         try:
@@ -374,7 +363,7 @@ class TeacherAgent:
         # TODO: Kiểm tra token hết hạn chưa, nếu hết hạn thì yêu cầu đăng nhập lại
         return None
 
-    def _create_google_form(self) -> str:
+    def _create_google_form(self, quizset_data: QuizQuestionOutput, username: str) -> str:
         """
         Tạo Google Form hoàn chỉnh từ quiz data.
         
@@ -384,21 +373,20 @@ class TeacherAgent:
         Raises:
             Exception: Nếu có lỗi trong quá trình tạo form
         """
-        temp_folder = Path("session_data/temp")
-        quiz_data_path = temp_folder / "quiz_data.json"
-        token_path = temp_folder / "token.json"
+
         
         # 1. Chuyển đổi quiz data thành Google Form schema
-        try:
+        try:            
             converter = QuizToGoogleFormConverter()
-            google_form_schema = converter.convert_file_to_google_form(input_file=str(quiz_data_path))
+            google_form_schema = converter.convert_quiz_to_google_form(quizset_data)
+            logger.info(f"Converted quiz data to Google Form schema for user: {username}")
         except Exception as e:
             error_msg = f"Error converting quiz to Google Form schema: {str(e)}"
             logger.error(error_msg)
             raise Exception("Đã xảy ra lỗi khi chuyển đổi bộ câu hỏi sang dạng form. Vui lòng thử lại sau.")
         
         # 2. Xây dựng Google Forms service với authentication
-        store = file.Storage(token_path)
+        store = file.Storage(Path(f"temp_data/session_temp/{username}/token.json").__str__())
         creds = store.get()
         
         DISCOVERY_DOC = "https://forms.googleapis.com/$discovery/rest?version=v1"

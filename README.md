@@ -64,10 +64,7 @@ sequenceDiagram
 - **VectorService**: Quản lý vector store và similarity search
 - **UIIntegrationService**: Bridge giữa UI và core services
 
-### Chunking Strategies
-1. **ONE_PAGE_PER_CHUNK**: Mỗi trang là một chunk
-2. **RECURSIVE_CHARACTER_TEXT_SPLITTER**: Chia theo ký tự với overlap
-3. **LLM_SPLITTER**: Sử dụng LLM để chia theo ngữ nghĩa
+
 
 ## 🛠️ Cài đặt
 
@@ -154,12 +151,4 @@ config/
 └── constants.py               # System constants
 ```
 
-## 🔄 Quy trình xử lý
 
-1. **Upload**: User upload file qua Gradio interface
-2. **Load**: DocumentLoader đọc và parse file PDF  
-3. **Chunk**: DocumentChunker chia tài liệu thành chunks nhỏ
-4. **Embed**: VectorService tạo embeddings và lưu vào vector store
-5. **Query**: User đặt câu hỏi
-6. **Retrieve**: Tìm kiếm chunks liên quan trong vector store
-7. **Response**: Trả về thông tin tìm được

@@ -156,16 +156,19 @@ def handle_chat_input(chat_history, session_state: dict):
         return chat_history
 
 # Function to handle Google Authentication
-def handle_google_authentication():
+def handle_google_authentication(session_state: dict) -> gr.Button:
     """Handle Google Authentication and open sign-in website."""
     try:
+        user_name = session_state.get("user_name")
+        assert user_name is not None, "User name not found in session state"
+       
         # Get authentication result with user name
-        auth_result, user_name = ui_service.open_sign_in_website()
+        auth_result, google_account_name = ui_service.open_sign_in_website(username=user_name)
         logger.info("Google authentication process completed.")
 
         # Check if authentication was successful
         if auth_result:
-            return gr.Button(value=user_name, interactive=False)
+            return gr.Button(value=google_account_name, interactive=False)
         else:
             # Authentication failed
             logger.error(f"Authentication failed: {auth_result}")
@@ -340,7 +343,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     # Sign in to Google
     google_auth_btn.click(
         fn=handle_google_authentication,
-        inputs=[],
+        inputs=[session_state],
         outputs=[google_auth_btn]
     )
 
