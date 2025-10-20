@@ -2,12 +2,12 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from pymongo.collection import Collection
 from pymongo.database import Database
+
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from services.models import (
         DocumentMetadata,
-        TableOfContents,
-        TocSection
+        QuizQuestionOutput
 )
 import dns.resolver
 from pymongo.server_api import ServerApi
@@ -64,7 +64,8 @@ class DatabaseService:
             self.db = self.client.get_database(database_name)
             self.users_collection = self.db.get_collection("users")
             self.documents_collection = self.db.get_collection("documents")
-            
+            self.quizset_collection = self.db.get_collection("quizsets")
+
             logger.info("Database connection established successfully")
             
         except ConnectionFailure as e:
@@ -179,55 +180,6 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error retrieving document metadata: {e}")
             return None
-
-    # def save_table_of_content(self, username: str, document_id: str, toc: TableOfContents) -> None:
-    #     """
-    #     Save table of contents to database.
-        
-    #     Args:
-    #         username: User identifier
-    #         document_id: Document identifier  
-    #         toc: TableOfContents object to save
-    #     """
-    #     try:
-    #         # Convert TableOfContents to dict for storage
-    #         toc_dict = toc.model_dump(mode='json')
-    #         result = self.documents_collection.update_one(
-    #             filter={"document_id": document_id, "username": username},
-    #             update={"$set": {"table_of_contents": toc_dict}},
-    #             upsert=True
-    #         )
-    #         logger.info(f"Table of contents saved for document_id: {document_id}, user_id: {user_id}")
-    #         logger.debug(f"Update result: {result.raw_result}")
-            
-    #     except Exception as e:
-    #         logger.error(f"Error saving table of contents: {e}")
-
-    # def get_table_of_content(self, user_id: str, document_id: str) -> Optional[TableOfContents]:
-    #     """
-    #     Retrieve table of contents from database.
-        
-    #     Args:
-    #         user_id: User identifier
-    #         document_id: Document identifier
-            
-    #     Returns:
-    #         TableOfContents object or None if not found
-    #     """
-    #     try:
-    #         result = self.documents_collection.find_one(
-    #             filter={"document_id": document_id, "user_id": user_id},
-    #             projection={"table_of_contents": 1, "_id": 0}
-    #         )
-            
-    #         if result and "table_of_contents" in result:
-    #             return TableOfContents(**result["table_of_contents"])
-    #         return None
-            
-    #     except Exception as e:
-    #         logger.error(f"Error retrieving table of contents: {e}")
-    #         return None
-
 
     def save_content_data(self, username: str, document_id: str, content_data: Dict[str, Any]) -> None:
         """
@@ -522,137 +474,34 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error checking document existence: {e}")
             return False
-
-    # def delete_document(self, user_id: str, document_id: str) -> bool:
-    #     """
-    #     Delete a document and all its associated data.
         
-    #     Args:
-    #         user_id: User identifier
-    #         document_id: Document identifier
-            
-    #     Returns:
-    #         True if deleted successfully, False otherwise
-    #     """
-    #     try:
-    #         result = self.documents_collection.delete_one(
-    #             filter={"document_id": document_id, "user_id": user_id}
-    #         )
-            
-    #         if result.deleted_count > 0:
-    #             logger.info(f"Deleted document {document_id} for user {user_id}")
-    #             return True
-    #         else:
-    #             logger.warning(f"Document {document_id} not found for user {user_id}")
-    #             return False
-                
-    #     except Exception as e:
-    #         logger.error(f"Error deleting document: {e}")
-    #         return False
-
-    # def update_document_processing_status(self, user_id: str, document_id: str, status: str, error_message: Optional[str] = None) -> None:
-    #     """
-    #     Update document processing status.
+    def save_quizset(self, username: str, quizset: QuizQuestionOutput) -> bool: 
+        """
+        Save quiz set to database after generation by Agent.
         
-    #     Args:
-    #         user_id: User identifier
-    #         document_id: Document identifier
-    #         status: New processing status
-    #         error_message: Optional error message if status is 'failed'
-    #     """
-    #     try:
-    #         update_data = {
-    #             "processing_status": status,
-    #             "last_updated": datetime.now()
-    #         }
-            
-    #         if error_message:
-    #             update_data["error_message"] = error_message
-            
-    #         result = self.documents_collection.update_one(
-    #             filter={"document_id": document_id, "user_id": user_id},
-    #             update={"$set": update_data}
-    #         )
-            
-    #         logger.info(f"Updated processing status for document {document_id} to {status}")
-    #         logger.debug(f"Update result: {result.raw_result}")
-            
-    #     except Exception as e:
-    #         logger.error(f"Error updating document processing status: {e}")
+        Args:
+            username: User identifier
+            quizset: QuizQuestionOutput object containing generated quiz questions
 
-    # def get_user_statistics(self, user_id: str) -> Dict[str, Any]:
-    #     """
-    #     Get statistics for a specific user.
-        
-    #     Args:
-    #         user_id: User identifier
-            
-    #     Returns:
-    #         Dictionary containing user statistics
-    #     """
-    #     try:
-    #         # Count documents by status
-    #         pipeline = [
-    #             {"$match": {"user_id": user_id}},
-    #             {"$group": {
-    #                 "_id": "$processing_status",
-    #                 "count": {"$sum": 1}
-    #             }}
-    #         ]
-            
-    #         status_counts = {}
-    #         for result in self.documents_collection.aggregate(pipeline):
-    #             status_counts[result["_id"]] = result["count"]
-            
-    #         # Get total documents
-    #         total_documents = sum(status_counts.values())
-            
-    #         # Get library size
-    #         library = self.get_document_library(user_id)
-    #         library_size = len(library)
-            
-    #         return {
-    #             "total_documents": total_documents,
-    #             "library_size": library_size,
-    #             "status_counts": status_counts,
-    #             "last_updated": datetime.now().isoformat()
-    #         }
-            
-    #     except Exception as e:
-    #         logger.error(f"Error getting user statistics: {e}")
-    #         return {}
+        Returns:
+            None
+        """
+        try:
+            # Write data to collection "quizsets", if document for username exists, update it
+            self._ensure_connection()
+            self.quizset_collection.update_one(
+                filter={"username": username},
+                update={"$set": quizset.model_dump(mode='json')},
+                upsert=True
+            )
+            logger.info(f"Quiz set saved for username: {username}")
+            # Return the result of the write operation
+            return True
+        except Exception as e:
+            logger.error(f"Error saving quiz set: {e}")
+            return False
 
-    # def cleanup_user_data(self, user_id: str) -> bool:
-    #     """
-    #     Clean up all data for a specific user.
-        
-    #     Args:
-    #         user_id: User identifier
-            
-    #     Returns:
-    #         True if cleanup successful, False otherwise
-    #     """
-    #     try:
-    #         # Delete all documents for user
-    #         documents_result = self.documents_collection.delete_many(
-    #             filter={"user_id": user_id}
-    #         )
-            
-    #         # Delete user library
-    #         library_result = self.users_collection.delete_one(
-    #             filter={"user_id": user_id}
-    #         )
-            
-    #         logger.info(f"Cleaned up data for user {user_id}: "
-    #                    f"{documents_result.deleted_count} documents, "
-    #                    f"{library_result.deleted_count} library entries")
-            
-    #         return True
-            
-    #     except Exception as e:
-    #         logger.error(f"Error cleaning up user data: {e}")
-    #         return False
-    
+
     def authenticate_user(self, username: str, password: str) -> bool:
         """
         Authenticate user credentials against the database.
@@ -692,7 +541,15 @@ class DatabaseService:
                 logger.info("Database connection closed.")
         except Exception as e:
             logger.error(f"Error closing database connection: {e}")
+            
+    def remove_quizsets(self) -> None:
+        try:
+            self.quizset_collection.delete_many({})
+            logger.info("All quizsets have been removed from the database.")
+        except Exception as e:
+            logger.error(f"Error removing quizsets: {e}")
 
     def __del__(self):
         """Destructor to ensure connection is closed."""
+        self.remove_quizsets()
         self.close_connection()
