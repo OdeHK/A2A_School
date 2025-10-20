@@ -1,6 +1,7 @@
 # Temporary folders
 session_data/
 vector_db/
+demo/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

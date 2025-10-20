@@ -575,36 +575,7 @@ class DocumentRepository:
         List all documents in the library across the session.
         
         Returns:
-            Dictionary with document_id as key and document info as value
+            Dictionary with name as key and document info as value
         """
-        if self.current_session_dir is None:
-            return {}
-        
-        library_dir = self.current_session_dir / DocumentRepositoryConstants.DOCUMENT_LIBRARY_DIR
-        
-        if not library_dir.exists():
-            return {}
-        
-        all_documents = {}
-        
-        # Scan all *_library.json files
-        for library_file in library_dir.glob("*_library.json"):
-            try:
-                with open(library_file, 'r', encoding='utf-8') as f:
-                    doc_data = json.load(f)
-                    
-                # Extract document_id from filename or data
-                if 'document_id' in doc_data:
-                    doc_id = doc_data['document_id']
-                    all_documents[doc_id] = doc_data
-                else:
-                    # Fallback: extract from filename
-                    doc_id = library_file.stem.replace('_library', '')
-                    doc_data['document_id'] = doc_id
-                    all_documents[doc_id] = doc_data
-                    
-            except Exception as e:
-                logger.error(f"Error loading library file {library_file}: {str(e)}")
-                continue
-        
-        return all_documents
+        # Simply return the document library directly
+        return self.get_document_library()

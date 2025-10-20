@@ -1,8 +1,3 @@
-"""
-Advanced Token Management for LLM-based TOC Generation
-Provides intelligent token counting, context window management, and adaptive chunking
-"""
-
 import tiktoken
 from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass

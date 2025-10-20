@@ -18,20 +18,39 @@ Mỗi đối tượng có các trường:
 - name (tên tài liệu), 
 - title (một danh sách các tiêu đề). 
 
+library_length: Số nguyên cho biết số lượng tài liệu có trong thư viện.
+
 user_request: Một chuỗi văn bản chứa truy vấn tìm kiếm của người dùng. 
 </INPUT_SCHEMA> 
 
 <INPUT> 
 Thư viện tài liệu: ```json 
-{library_str} 
+{library_str}
+```
+Số lượng tài liệu: {library_length}
 Yêu cầu của người dùng: "{user_request}"
+
 </INPUT>
 
 <INSTRUCTIONS> 
-1. Phân tích user_request để hiểu rõ ý định và ý nghĩa cốt lõi. 
-2. So sánh ý định này với **key** của từng tài liệu trong library_str trước tiên. - Nếu tìm thấy key phù hợp, dùng tài liệu đó. - Nếu KHÔNG tìm thấy key phù hợp, chọn tài liệu đầu tiên trong library_str. 
-3. Trong tài liệu đã chọn: - Nếu tìm thấy một title khớp với user_request, chọn title đó. - Nếu KHÔNG tìm thấy title phù hợp, trả về `"title": [full_document]`. 
-4. Nếu library_str rỗng, trả về đối tượng JSON rỗng: {{}}.
+Thực hiện theo quy trình nghiêm ngặt sau:
+
+**Bước 1: Tìm kiếm tài liệu dựa trên KEY**
+1.1. Phân tích `user_request` để xác định **tên tài liệu** mà người dùng muốn tìm.
+1.2. So sánh tên tài liệu này với các **key** trong `library_str`.
+
+1.3. Xử lý kết quả so khớp:
+- **NẾU TÌM THẤY một key phù hợp:** Chọn tài liệu tương ứng với key đó và chuyển sang **Bước 2**.
+- **NẾU KHÔNG TÌM THẤY key nào phù hợp:**
+- Nếu `library_length > 1`: Trả về đối tượng JSON rỗng: `{{}}`. 
+- Nếu `library_length == 1`: Chọn tài liệu duy nhất đó và chuyển sang **Bước 2**.
+- Nếu `library_length == 0`: Trả về đối tượng JSON rỗng: `{{}}`.
+
+**Bước 2: Tìm kiếm tiêu đề trong tài liệu đã chọn**
+2.1. Phân tích `user_request` một lần nữa để xác định **tiêu đề cụ thể** mà người dùng muốn.
+2.2. So sánh tiêu đề này với danh sách `title` trong tài liệu đã chọn ở Bước 1.
+- **NẾU TÌM THẤY một title phù hợp:** Chọn title đó.
+- **NẾU KHÔNG TÌM THẤY title phù hợp** (hoặc người dùng không chỉ định tiêu đề): Trả về `["full_document"]`.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
@@ -56,6 +75,23 @@ Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer trong 
 </INPUT>
 <OUTPUT> 
 {{"document_id": "doc_333xyz", "title": ["Transformer"]}}
+</OUTPUT> 
+</EXAMPLE>
+<EXAMPLE> 
+<INPUT> 
+Thư viện tài liệu: 
+```json {{ 
+"machine_learning_can_ban": 
+{{ "document_id": "doc_222abc", "name": "machine_learning_can_ban", 
+"title": [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ] }}, 
+"deep_learning_nang_cao":
+{{ "document_id": "doc_333xyz", "name": "deep_learning_nang_cao",
+"title": [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ] }}
+}} ```
+Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer trong tài liệu toán cao cấp." 
+</INPUT>
+<OUTPUT> 
+{{}}
 </OUTPUT> 
 </EXAMPLE>
 """
@@ -107,29 +143,33 @@ Trí tuệ nhân tạo (AI) mang lại nhiều lợi ích cho các ngành như y
 router_node_prompt = ChatPromptTemplate.from_template(
     """
 <ROLE>
-Bạn là một chuyên gia phân loại yêu cầu của người dùng.
+Bạn là một chuyên gia phân tích và điều phối yêu cầu của người dùng.
 </ROLE>
 
 <OBJECTIVE>
-Phân tích yêu cầu của người dùng và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa.
+Phân tích yêu cầu **hiện tại** của người dùng, dựa trên **bối cảnh** của cuộc hội thoại, và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa, create_form.
 </OBJECTIVE>
 
-<INPUT_SCHEMA>
-user_request: Một chuỗi văn bản chứa câu hỏi hoặc yêu cầu từ người dùng.
-</INPUT_SCHEMA>
+<CONTEXT>
+Đây là lịch sử của cuộc trò chuyện. Hãy sử dụng nó để hiểu các yêu cầu mang tính kế thừa hoặc không đầy đủ trong yêu cầu hiện tại.
+Ví dụ: Nếu người dùng nói "tóm tắt nó đi", bạn cần xem lại lịch sử để biết "nó" là tài liệu nào.
+
+<CHAT_HISTORY>
+{chat_history}
+</CHAT_HISTORY>
+</CONTEXT>
 
 <INPUT>
-Yêu cầu của người dùng:
+Yêu cầu hiện tại của người dùng cần phân loại:
 {user_request}
 </INPUT>
 
 <INSTRUCTIONS>
-Phân loại user_request theo quy tắc sau:
-- summarizer: nếu yêu cầu là tóm tắt nội dung của một tài liệu, sách, chương, mục.
-- quiz_generation: nếu yêu cầu sinh câu hỏi, tạo quiz, hoặc đề kiểm tra dựa trên tài liệu.
-- rag_qa: nếu yêu cầu là trả lời câu hỏi từ tài liệu đã tải lên (ví dụ: "Trong chương 1 sách X nói gì về Y?")
-- create_form: nếu yêu cầu tạo Google Form, chuyển đổi quiz sang form, hoặc tạo form từ bộ câu hỏi đã có.
-
+Phân tích và phân loại `user_request` dựa vào `CHAT_HISTORY` theo quy tắc sau:
+- **summarizer**: nếu yêu cầu là tóm tắt nội dung của một tài liệu, sách, chương, mục đã được đề cập.
+- **quiz_generation**: nếu yêu cầu sinh câu hỏi, tạo quiz, hoặc đề kiểm tra dựa trên tài liệu đã có trong bối cảnh.
+- **rag_qa**: nếu yêu cầu là trả lời một câu hỏi cụ thể từ tài liệu đã tải lên (ví dụ: "Trong chương 1 sách X nói gì về Y?").
+- **create_form**: nếu yêu cầu tạo Google Form, chuyển đổi quiz sang form, hoặc tạo form từ bộ câu hỏi đã có trong bối cảnh.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
