@@ -286,7 +286,7 @@ class DatabaseService:
             logger.error(f"Error retrieving TOC structure data: {e}")
             return None
 
-    def save_document_library(self, username: str, document_library: Dict[str, Dict[str, Any]]) -> None:
+    def save_document_library(self, username: str, document_id: str, document_library: Dict[str, Dict[str, Any]]) -> None:
         """
         Save complete document library to database.
         
@@ -299,7 +299,8 @@ class DatabaseService:
             assert self.documents_collection is not None
             
             result = self.documents_collection.update_one(
-                filter={"username": username},
+                filter={"username": username,
+                        "document_id": document_id},
                 update={
                     "$set": {
                         "document_library": document_library,
@@ -314,12 +315,13 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error saving document library: {e}")
 
-    def get_document_library(self, username: str) -> Dict[str, Dict[str, Any]]:
+    def get_document_library(self, username: str, document_id: str) -> Dict[str, Dict[str, Any]]:
         """
         Retrieve complete document library for user.
         
         Args:
             username: User identifier
+            document_id: Document identifier
             
         Returns:
             Dictionary with document_name as key and document info as value, or empty dict if not found
@@ -329,7 +331,7 @@ class DatabaseService:
             assert self.documents_collection is not None
             
             result = self.documents_collection.find_one(
-                filter={"username": username},
+                filter={"username": username, "document_id": document_id},
                 projection={"document_library": 1, "_id": 0}
             )
             
@@ -352,19 +354,21 @@ class DatabaseService:
             title: List of document titles/bookmarks
         """
         try:
-            # Get existing library
-            document_library = self.get_document_library(username)
+
             
             # Add/update document with name as key
-            document_library[name] = {
-                'document_id': document_id,
-                'name': name,
-                'title': title,
-                'added_date': datetime.now().isoformat()
+            document_library = {
+                name: {
+                    'document_id': document_id,
+                    'name': name,
+                    'title': title,
+                    'added_date': datetime.now().isoformat()
+                }
             }
-            
+
+
             # Save updated library
-            self.save_document_library(username, document_library)
+            self.save_document_library(username, document_id, document_library)
             logger.info(f"Added document {name} to library for user {username}")
             
         except Exception as e:
@@ -572,8 +576,3 @@ class DatabaseService:
             logger.info("All quizsets have been removed from the database.")
         except Exception as e:
             logger.error(f"Error removing quizsets: {e}")
-
-    def __del__(self):
-        """Destructor to ensure connection is closed."""
-        self.remove_quizsets()
-        self.close_connection()
