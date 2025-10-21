@@ -5,11 +5,8 @@ import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
 from langchain_huggingface import HuggingFaceEmbeddings
 
-<<<<<<<< HEAD:services/summarizer/textrank_summarizer.py
-from services.summarizer.token_manager import TokenManager, create_token_manager
-========
+
 from services.summarization.token_manager import TokenManager, create_token_manager
->>>>>>>> e0b4257 (create summarization folder, create summarization  serivce,and use  short term memory):services/summarization/textrank_summarizer.py
 from config.settings import get_settings
 from config.constants import ModelConstants
 
@@ -195,6 +192,7 @@ class HybridSummarizerStrategy:
 
             except Exception as cleanup_error:
                 logger.warning(f"GPU memory cleanup failed: {cleanup_error}")
+        
     
     def _boost_title_relevance(self, chunks: List[str], pagerank_scores: Dict, title: str) -> Dict:
         """
