@@ -10,13 +10,15 @@ from oauth2client import client, file, tools
 from langgraph.graph import StateGraph, END
 
 from services.document_processing import document_library
-from services.prompt import router_node_prompt, find_document_node_prompt, summarize_content_node_prompt
+from services.summarization.prompt import router_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
 from services.quiz_generation.quiz_generation import QuizGenerationService
+from services.summarization.summarization import SummarizationService
 from services.document_processing.document_management_service import DocumentManagementService
 from services.rag.llm_service import LLMService
+from services.agent.memory_manager import ShortTermMemory, MemoryEntry
 
 # Logger toàn cục cho module này
 logger = logging.getLogger(__name__)
@@ -37,28 +39,48 @@ class TeacherAgent:
     Teacher Agent that routes requests to appropriate subgraphs or services.
     
     This agent can handle requests for summarization, quiz generation, and RAG-based Q&A.
+    Enhanced with Short-Term Memory for context-aware interactions.
     """
     
     def __init__(
             self, 
             rag_service,
             quiz_generation_service,
+            summarization_service,
             document_management_service,
-            llm_service):
+            llm_service,
+            enable_memory: bool = True):
         """
         Initialize the Teacher Agent with required services.
 
         Args:
             rag_service: RAG service for document queries
             quiz_generation_service: Service for quiz generation
+            summarization_service: Service for summarization
             document_management_service: Service for document management
             llm_service: LLM service for the agent
+            enable_memory: Enable short-term memory (default: True)
         """
 
         self.rag_service = rag_service
         self.quiz_generation_service = quiz_generation_service
+        self.summarization_service = summarization_service
         self.document_management_service = document_management_service
         self.llm_service = llm_service
+        
+        # Initialize memory systems
+        self.enable_memory = enable_memory
+        if enable_memory:
+            self.memory = ShortTermMemory(
+                max_entries=50,
+                decay_minutes=30,
+                min_importance_threshold=0.1
+            )
+            logger.info("Short-term memory initialized")
+        else:
+            self.memory = None
+            logger.info("Memory disabled")
+        
         self.workflow = self._create_workflow()
 
     def _create_workflow(self):
@@ -71,60 +93,103 @@ class TeacherAgent:
             logger.info(f"User {username} request: {state['user_request']}")
             
             llm = self.llm_service.get_llm()
-            routing_chain =  router_node_prompt | llm | StrOutputParser()
-            route = routing_chain.invoke({"user_request": state["user_request"]})
+            # -----------------------------
+            # Step 2: Lấy ngữ cảnh hội thoại gần đây (nếu có)
+            # -----------------------------
+            context_for_llm = ""
+            if self.enable_memory and self.memory:
+                context_for_llm = self.memory.get_context_for_llm(
+                    task_type="general"
+                )
+            
+            # -----------------------------
+            # Step 3: Xác định lộ trình dựa trên yêu cầu + ngữ cảnh
+            # -----------------------------
+            llm_input = {"user_request": state["user_request"], "chat_history": context_for_llm}
+            routing_chain = router_prompt | llm | StrOutputParser()
+            route = routing_chain.invoke(llm_input)
+
             logger.info(f" -> Lộ trình được quyết định: '{route}'")
-            
-            return {"route": route}
+            logger.info(f" -> Context for LLM : {context_for_llm}")
 
-        def summarizer_node(state: ParentGraphState):
-            """Thực thi subgraph tóm tắt."""
+            # -----------------------------
+            # Memory: Lưu lại quyết định định tuyến và truy vấn người dùng
+            # -----------------------------
+            if self.enable_memory and self.memory:
+                self.memory.add_user_query(
+                    query=state['user_request'],
+                    task_type="general"
+                )
+                self.memory.add_agent_response(
+                    response=f"Routing decision: {route}",
+                    metadata={},
+                    task_type="general"
+                )
+
+            return {
+                "route": route,
+            }
+        def summarization_node(state: ParentGraphState):
+            """Thực thi subgraph tóm tắt sử dụng SummarizationService."""
             logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
-            selected_document_id = state["selected_document_id"]
+            
+            user_request = state["user_request"] 
             username = state["username"]
-
-            # Check which section to summarize
-            document_library = self.document_management_service.get_document_library(username=username)
-            llm = self.llm_service.get_llm()
-            find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
-            library_str = json.dumps(document_library, indent=2)
-            matched_document = find_document_chain.invoke({
-                "library_str": library_str,
-                "user_request": state["user_request"]
-            })
-            logger.info(f"Matched document: {matched_document}")
-            if matched_document is None:
-                logger.warning("Không tìm thấy tài liệu phù hợp trong thư viện.")
-                return {"answer": "Không tìm thấy nội dung bạn đề cập."}
-
-
-            # Get content data which contains the actual content
-            content_data = self.document_management_service.get_content_data(username=username, document_id=selected_document_id)["content"]
-
-            if not content_data:
-                logger.warning(f"No content data found for document: {selected_document_id}")
-                return { "answer": "Không tìm thấy nội dung để tóm tắt."}
+            selected_document_id = state["selected_document_id"]
             
-            # Find content by title
-            title = matched_document["title"][0]
-            extracted_content = None
-            for content_item in content_data:
-                if content_item.get("title") == title:
-                    extracted_content = content_item.get("content")
-                    break
-            
-            if not extracted_content:
-                logger.warning(f"No content found for title: {title}")
-                no_content_msg = f"Không tìm thấy nội dung cho '{title}'."
-                return {"answer": no_content_msg}
-            
-            logger.info(f"Found content length: {len(extracted_content)} characters")
-            
-            llm = self.llm_service.get_llm()
-            chain = summarize_content_node_prompt | llm
-            summary = chain.invoke({"input_text": extracted_content})
-            logger.info(f"Summary generated: {summary}")
-            return {"answer": summary.content}
+            try:
+                if not selected_document_id or not user_request:
+                    logger.warning("Cần cung cấp document_id và yêu cầu người dùng.")
+                    return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
+                titles =  None
+                logger.info(f"Memory entries: {self.memory.entries}")
+                if self.enable_memory and self.memory:
+                    for entry in reversed(self.memory.entries):
+                        if entry.task_type == "summary" and entry.metadata.get("document_id") == selected_document_id:
+                            titles = entry.metadata.get("titles", None)
+                            logger.info(f"Found matched_document from memory: {selected_document_id}")
+                            break
+                
+                # Get conversation context from memory
+                context_for_llm = ""
+                if self.enable_memory and self.memory:
+                    context_for_llm = self.memory.get_context_for_llm(
+                        task_type="summary"
+                    )
+                
+                summary, titles = self.summarization_service.generate_summary(
+                    user_request=user_request,
+                    context_for_llm=context_for_llm,
+                    username=username,
+                    document_id=selected_document_id,
+                    titles=titles
+                )
+                
+                # Memory: Add agent response với metadata từ summary result
+                if self.enable_memory and self.memory:
+                    # Lưu response vào memory để lần sau có thể reference
+                    self.memory.add_agent_response(
+                        response=summary,
+                        metadata={
+                            "document_id": selected_document_id,
+                            "titles": titles
+                        },
+                        task_type="summary"
+                    )
+
+                return {"answer": summary}
+                
+            except Exception as e:
+                logger.error(f"Error in summarization_node: {e}")
+                error_msg = f"Lỗi khi tạo bản tóm tắt: {str(e)}"
+                
+                if self.enable_memory and self.memory:
+                    self.memory.add_agent_response(
+                        response=error_msg,
+                        task_type="summary"
+                    )
+                
+                return {"answer": error_msg}
 
         def rag_qa_node(state: ParentGraphState):
             """Trả lời câu hỏi dựa trên tài liệu (RAG) với metadata filtering."""
@@ -151,6 +216,14 @@ class TeacherAgent:
                 # Generate RAG response with metadata filtering
                 response = self.rag_service.generate_rag_response(query, filter=metadata_filter)
                 logger.info(f"RAG Q&A response: {response}")
+                
+                # Memory: Add agent response
+                if self.enable_memory and self.memory:
+                    self.memory.add_agent_response(
+                        response=response,
+                        task_type="rag"
+                    )
+                
                 return {"answer": response}
             except Exception as e:
                 logger.error(f"Error in generate_rag_response tool: {str(e)}")
@@ -185,6 +258,14 @@ class TeacherAgent:
                     toc_data=toc_string
                 )
                 logger.info(f"Quiz generation result: {result}")
+
+                # Memory: Add agent response
+                if self.enable_memory and self.memory:
+                    self.memory.add_agent_response(
+                        response=result,
+                        document_id=selected_document_id,
+                        task_type="quiz"
+                    )
 
                 # Random hint messages for next step
                 next_step_hint_list = [
@@ -221,7 +302,7 @@ class TeacherAgent:
         # --- Xây dựng và Compile Parent Graph ---
         workflow = StateGraph(ParentGraphState)
         workflow.add_node("router", router_node) 
-        workflow.add_node("summarizer", summarizer_node) 
+        workflow.add_node("summarization", summarization_node) 
         workflow.add_node("rag_qa", rag_qa_node)
         workflow.add_node("quiz_generation", quiz_generation_node)
         workflow.add_node("create_form", create_form_node)
@@ -231,14 +312,15 @@ class TeacherAgent:
             "router",
             decide_route,
             {
-                "summarizer": "summarizer",
+                "summarization": "summarization",
                 "quiz_generation": "quiz_generation",
                 "create_form": "create_form",
-                "rag_qa": "rag_qa"
+                "rag_qa": "rag_qa",
+                 None: END
             }
         )
 
-        workflow.add_edge("summarizer", END)
+        workflow.add_edge("summarization", END)
         workflow.add_edge("quiz_generation", END)
         workflow.add_edge("create_form", END)
         workflow.add_edge("rag_qa", END)
@@ -377,7 +459,8 @@ class TeacherAgent:
         """
         
         try:
-
+            # Note: User query is added in router_node with task_type based on routing decision
+            
             # Prepare state for workflow
             state: ParentGraphState = {
                 "user_request": query,
@@ -399,6 +482,69 @@ class TeacherAgent:
         except Exception as e:
             logger.error(f"Error handling chat query: {str(e)}")
             return "Đã xảy ra lỗi khi xử lý yêu cầu."
+    
+    def get_memory_context(self,  
+                           document_id: Optional[str] = None,
+                           task_type: Optional[str] = None) -> str:
+        """
+        Get memory context for LLM
+        
+        Args:
+            max_tokens: Maximum tokens for context
+            
+        Returns:
+            Context string
+        """
+        if not self.enable_memory or not self.memory:
+            return ""
+
+        return self.memory.get_context_for_llm(document_id=document_id, task_type=task_type)
+
+    def get_memory_statistics(self) -> dict:
+        """
+        Get statistics about memory
+        
+        Returns:
+            Dictionary with statistics
+        """
+        if not self.enable_memory or not self.memory:
+            return {}
+        
+        return self.memory.get_statistics()
+    
+    def clear_memory(self) -> None:
+        """Clear all memory"""
+        if self.enable_memory and self.memory:
+            self.memory.clear()
+            logger.info("Memory cleared")
+    
+    def save_memory(self, filepath: str) -> None:
+        """
+        Save memory to file
+        
+        Args:
+            filepath: Path to save file
+        """
+        if not self.enable_memory or not self.memory:
+            logger.warning("Memory not enabled, cannot save")
+            return
+        
+        self.memory.save_to_file(filepath)
+        logger.info(f"Memory saved to {filepath}")
+    
+    def load_memory(self, filepath: str) -> None:
+        """
+        Load memory from file
+        
+        Args:
+            filepath: Path to load file
+        """
+        if not self.enable_memory or not self.memory:
+            logger.warning("Memory not enabled, cannot load")
+            return
+        
+        self.memory.load_from_file(filepath)
+        logger.info(f"Memory loaded from {filepath}")
         
 
 
