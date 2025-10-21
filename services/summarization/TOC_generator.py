@@ -17,9 +17,9 @@ from typing import Dict, List, Optional, Any, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-# Import enhanced components
-from services.summarizer.token_manager import TokenManager, create_token_manager
-from services.summarizer.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
+
+from services.summarization.token_manager import TokenManager, create_token_manager
+from services.summarization.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
 
 logger = logging.getLogger(__name__)
 

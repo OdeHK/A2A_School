@@ -1,8 +1,3 @@
-"""
-UI Integration Service for handling Gradio interface operations.
-This service acts as a bridge between the UI and the core RAG services.
-"""
-
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
@@ -12,6 +7,7 @@ from oauth2client import client, file, tools
 
 from services.database_service import DatabaseService
 from services.quiz_generation.quiz_generation import QuizGenerationService
+from services.summarization.summarization import SummarizationService
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
@@ -31,6 +27,7 @@ class UIIntegrationService:
         self.rag_service: Optional[RagService] = None
         self.doc_management_service: Optional[DocumentManagementService] = None
         self.quiz_generation_service: Optional[QuizGenerationService] = None
+        self.summarization_service: Optional[SummarizationService] = None
         self.agent_service: Optional[TeacherAgent] = None
         self.processing_status: Dict[str, Any] = {}
         
@@ -39,6 +36,7 @@ class UIIntegrationService:
         self._initialize_database_service()
         self._initialize_document_management_service()
         self._initialize_quiz_generation_service()
+        self._initialize_summarization_service()
         self._initialize_agent_service()
 
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> None:
@@ -108,11 +106,37 @@ class UIIntegrationService:
                 self.quiz_generation_service = QuizGenerationService(rag_service=self.rag_service)
                 logger.info("Quiz generation service initialized")
             else:
-                logger.error("Cannot initialize quiz generation service: RAG service is None")
+                logger.error("Failed to initialize RAG service, quiz generation service cannot be initialized")
                 self.quiz_generation_service = None
         except Exception as e:
             logger.error(f"Error initializing quiz generation service: {str(e)}")
             self.quiz_generation_service = None
+
+    def _initialize_summarization_service(self):
+        """
+        Initialize or reinitialize the summarization service.
+        """
+        try:
+            # Ensure RAG service and document management service are initialized first
+            if not self.rag_service:
+                self._initialize_rag_service()
+            
+            if not self.doc_management_service:
+                self._initialize_document_management_service()
+            
+            # Check again after initialization
+            if self.rag_service and self.doc_management_service:
+                self.summarization_service = SummarizationService(
+                    rag_service=self.rag_service,
+                    document_management_service=self.doc_management_service
+                )
+                logger.info("Summarization service initialized")
+            else:
+                logger.error("Failed to initialize required services, summarization service cannot be initialized")
+                self.summarization_service = None
+        except Exception as e:
+            logger.error(f"Error initializing summarization service: {str(e)}")
+            self.summarization_service = None
 
     def _initialize_agent_service(self):
         """
@@ -120,12 +144,17 @@ class UIIntegrationService:
         """
         try:
             # Ensure all required services are available
-            if self.rag_service and self.quiz_generation_service and self.doc_management_service:
+            if (self.rag_service and 
+                self.quiz_generation_service and 
+                self.summarization_service and 
+                self.doc_management_service):
                 self.agent_service = TeacherAgent(
                     rag_service=self.rag_service,
                     quiz_generation_service=self.quiz_generation_service,
+                    summarization_service=self.summarization_service,
                     document_management_service=self.doc_management_service,
-                    llm_service=self.rag_service.llm_service
+                    llm_service=self.rag_service.llm_service,
+                    enable_memory=True
                 )
                 logger.info("Agent service initialized successfully")
             else:
@@ -185,6 +214,9 @@ class UIIntegrationService:
             
             # Reinitialize quiz generation service
             self._initialize_quiz_generation_service()
+            
+            # Reinitialize summarization service
+            self._initialize_summarization_service()
             
             # Reinitialize agent service
             self._initialize_agent_service()
@@ -464,6 +496,7 @@ class UIIntegrationService:
             "rag_service_initialized": self.rag_service is not None,
             "doc_management_service_initialized": self.doc_management_service is not None,
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
+            "summarization_service_initialized": self.summarization_service is not None,
             "agent_service_initialized": self.agent_service is not None,
             "documents_processed": len(self.processing_status)
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
