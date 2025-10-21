@@ -125,7 +125,12 @@ class DocumentManagementService:
                 # Save TOC structure data và content data vào session
                 toc_structure_data = extraction_result.toc_structure.to_dict()
                 content_data = extraction_result.content_data.to_dict()
-
+                
+                try:
+                    idx = next(i for i, c in enumerate(content_data["content"]) if c["title"] == "full_document")
+                    content_data["content"] = content_data["content"][:idx+1]
+                except StopIteration:
+                    pass
 
                 self.database_service.save_toc_structure_data(username=username, document_id=document_id, toc_structure=toc_structure_data)
                 self.database_service.save_content_data(username=username, document_id=document_id, content_data=content_data)
@@ -160,6 +165,9 @@ class DocumentManagementService:
                 try:
                     # Extract titles from TOC structure - now it's nested format
                     document_titles = self._extract_titles_from_toc_structure(extraction_result.toc_structure.sections)
+                    idx = document_titles.index("full_document")
+                    document_titles = document_titles[:idx+1]
+                    
                     idx = document_titles.index("full_document")
                     document_titles = document_titles[:idx+1]
                     
