@@ -478,6 +478,8 @@ class UIIntegrationService:
         Cleanup all initialized service objects to release resources.
         """
         self.delete_temp_folder_for_all_users()
+        self.database_service.remove_quizsets()
+        self.database_service.close_connection()
         del self.rag_service
         del self.doc_management_service
         del self.quiz_generation_service
