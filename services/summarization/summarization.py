@@ -7,18 +7,18 @@ from services.document_processing.document_management_service import DocumentMan
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
 from langchain_core.output_parsers import JsonOutputParser
-from services.summarization.prompt import find_document_node_prompt, summarize_content_node_prompt
-
+from services.summarization.prompt import find_titles_prompt, summarize_content_prompt
+import random
 logger = logging.getLogger(__name__)
 
 
 # ====== Graph State =========
 class SummarizationState(TypedDict):
     """State cho Summarization workflow"""
-    user_request: str
+    user_request: Optional[str]
+    username: Optional[str]
     document_id: Optional[str]
-    title: Optional[str]
-    matched_document: Optional[dict]
+    titles: list[str]
     extracted_content: Optional[str]
     final_summary: Optional[str]
     context_for_llm: Optional[str]
@@ -43,7 +43,9 @@ class SummarizationService:
     def generate_summary(self, 
                         user_request: str,
                         context_for_llm: Optional[str] = None,
-                        matched_document: Optional[dict] = None) -> str:
+                        username: Optional[str] = None,
+                        document_id: Optional[str] = None,
+                        titles: Optional[list[str]] = None) -> str:
         """
         Main entry point để tạo bản tóm tắt
         
@@ -61,7 +63,9 @@ class SummarizationService:
         
         initial_state: SummarizationState = {
             "user_request": user_request,
-            "matched_document": matched_document,
+            "username": username,
+            "document_id": document_id,
+            "titles": titles,
             "extracted_content": None,
             "final_summary": None,
             "context_for_llm": context_for_llm
@@ -72,8 +76,8 @@ class SummarizationService:
         logger.info("========================================")
         logger.info("SUMMARIZATION WORKFLOW COMPLETE")
         logger.info("========================================")
-        
-        return result.get("final_summary", "Không thể tạo bản tóm tắt."),result.get("matched_document","")
+
+        return result.get("final_summary", "Không thể tạo bản tóm tắt."), result.get("titles", "")
 
     def _create_workflow(self):
         """Create LangGraph workflow with properly configured nodes"""
@@ -82,90 +86,79 @@ class SummarizationService:
             """Node để tìm tài liệu và trích xuất nội dung"""
             logger.info("=== FIND CONTENT NODE START ===")
             logger.info(f"User request: {state['user_request']}")
-            
+            username = state.get("username")
+            document_id = state.get("document_id")
+            context_for_llm = state.get("context_for_llm")
             llm = self.llm_service.get_llm()
+            try:
+                content_data = self.document_management_service.get_content_data(
+                    username=username, document_id=document_id
+                )
+                if not content_data:
+                    logger.error(f"❌ No content_data returned for user={username}, document_id={document_id}")
+                    return {"error": "No content found for the given document."}
+
+                if "content" not in content_data:
+                    logger.error(f"❌ 'content' key missing in content_data: {content_data.keys()}")
+                    return {"error": "Invalid content format returned from document_management_service."}
+
+                if not isinstance(content_data["content"], list):
+                    logger.error("❌ content_data['content'] is not a list.")
+                    return {"error": "Invalid content format: expected list of items."}
+
+            except Exception as e:
+                logger.exception("❌ Error while retrieving content_data:")
+                raise
+            try:
+                titles_data = [item.get("title") for item in content_data["content"] if "title" in item]
+                logger.info(f"✅ Extracted {len(titles_data)} titles from document.")
+            except Exception as e:
+                logger.exception("❌ Error while extracting titles from content_data:")
+                raise
             
-            # -----------------------------
-            # Step 1: Nếu chưa có matched_document, tìm trong thư viện
-            # -----------------------------
-            document_library = self.document_management_service.get_document_library()
-            library_length = len(document_library)
-            
-            logger.info(f"Document library size: {library_length}")
-            
-            find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
-            library_str = json.dumps(document_library, indent=2)
+            find_document_chain = find_titles_prompt | llm | JsonOutputParser()
+            titles_data_str = json.dumps(titles_data, indent=2, ensure_ascii=False)
             
             try:
-                matched_document = find_document_chain.invoke({
-                    "library_str": library_str,
+                titles = find_document_chain.invoke({
+                    "title_list": titles_data_str,
                     "user_request": state["user_request"],
-                    "library_length": library_length
+                    
                 })
                 
-                logger.info(f"Matched document from library: {matched_document}")
+                logger.info(f"Matched titles: {titles}")
                 
             except Exception as e:
                 logger.error(f"Error finding document: {e}")
-                matched_document = None
+                titles = None
         
             
             # -----------------------------
             # Step 2: Kiểm tra tài liệu có được tìm thấy không
             # -----------------------------
-            if not matched_document:
-                if not state.get("matched_document"):  # Kiểm tra state
-                    return {
-                    **state,
-                    "matched_document": None,
-                    "final_summary": "❓Bạn có thể giúp mình bằng cách nói rõ tên tài liệu cần tìm được không?"
-                }
+            if not titles:
+                if context_for_llm and state.get("titles"):
+                    titles = state.get("titles")
+                    logger.info(f"Using titles from state (memory): {titles}")
                 else:
-                    matched_document = state["matched_document"]  
+                    titles = ["full_document"]
+                    logger.info("Using full_document as default")
                 
+        
             # -----------------------------
-            # Step 3: Lấy document_id và title từ matched_document
-            # -----------------------------
-            document_id = matched_document.get("document_id")
-            title = matched_document.get("title", [None])[0] if matched_document.get("title") else None
-            
-            if not document_id or not title:
-                logger.warning("Document ID hoặc Title không hợp lệ")
-                return {
-                    **state,
-                    "matched_document": matched_document,
-                    "final_summary": "Không tìm thấy thông tin tài liệu hợp lệ."
-                }
-            
-            logger.info(f"Getting content for document_id: {document_id}, title: {title}")
-            
-            # -----------------------------
-            # Step 4: Lấy nội dung từ document_management_service
+            # Step 3: Lấy nội dung từ document_management_service
             # -----------------------------
             try:
-                content_data = self.document_management_service.get_content_data(document_id)["content"]
-                
-                if not content_data:
-                    logger.warning(f"No content data found for document: {document_id}")
-                    return {
-                        **state,
-                        "matched_document": matched_document,
-                        "final_summary": "Không tìm thấy nội dung để tóm tắt."
-                    }
-                
-                # Find content by title
-                extracted_content = None
-                for content_item in content_data:
-                    if content_item.get("title") == title:
-                        extracted_content = content_item.get("content")
-                        break
-                
+                extracted_content = []
+                for content_item in content_data["content"]:
+                    if content_item["title"] in titles:
+                        extracted_content.append(content_item["content"])
+                extracted_content = "\n".join(extracted_content)
                 if not extracted_content:
-                    logger.warning(f"No content found for title: {title}")
+                    logger.warning(f"No content found for titles: {titles}")
                     return {
                         **state,
-                        "matched_document": matched_document,
-                        "final_summary": f"Không tìm thấy nội dung cho '{title}'."
+                        "final_summary": "Không tìm thấy nội dung để tóm tắt."
                     }
                 
                 logger.info(f"Found content length: {len(extracted_content)} characters")
@@ -174,14 +167,13 @@ class SummarizationService:
                 logger.error(f"Error extracting content: {e}")
                 return {
                     **state,
-                    "matched_document": matched_document,
                     "final_summary": f"Lỗi khi trích xuất nội dung: {str(e)}"
                 }
             
             logger.info("=== FIND CONTENT NODE END ===")
             return {
                 **state,
-                "matched_document": matched_document,
+                "titles": titles,
                 "extracted_content": extracted_content
             }
 
@@ -220,13 +212,24 @@ class SummarizationService:
                 logger.info("Added conversation context to LLM input")
             
             try:
-                chain = summarize_content_node_prompt | llm
+                chain = summarize_content_prompt | llm
                 summary = chain.invoke(llm_input)
                 
                 logger.info(f"Summary generated: {summary.content[:100]}...")
                 
                 final_summary = summary.content
-                
+                extra_questions = [
+                    #"✂️ Bạn có muốn tôi làm nó ngắn gọn hơn (ví dụ: chỉ 3 gạch đầu dòng) không?",
+                    #"🎯 Bạn có muốn tôi tập trung vào một khía cạnh cụ thể nào khác của tài liệu (ví dụ: chỉ tóm tắt phần 'kết luận' hoặc 'phương pháp luận') không?",
+                    "📏 Mức độ chi tiết này đã phù hợp với bạn chưa?",
+                    "💬 Bạn có muốn biết thêm thông tin nào khác về tài liệu này không?",
+                    "📝 Bản tóm tắt này đã đủ chi tiết cho bạn chưa?",
+                   # "❓ Bạn có muốn tôi sinh một số câu hỏi liên quan đến tài liệu này không?"
+                ]
+                random_question = random.choice(extra_questions)
+                state['user_request'] = random_question
+                final_summary += f"\n\n\n{random_question}"
+
             except Exception as e:
                 logger.error(f"Error generating summary: {e}")
                 final_summary = f"Lỗi khi tạo bản tóm tắt: {str(e)}"
@@ -236,12 +239,7 @@ class SummarizationService:
                 **state,
                 "final_summary": final_summary
             }
-        def router_decision(state: SummarizationState) -> str:
-            """Quyết định có tiếp tục tóm tắt hay kết thúc"""
-            # Nếu không tìm thấy document hoặc đã có final_summary (lỗi)
-            if state.get("matched_document") is None or state.get("final_summary") is not None:
-                return END
-            return "summarization"
+        
 
         # -----------------------------
         # Build workflow
@@ -254,17 +252,7 @@ class SummarizationService:
         
         # Define flow
         workflow.add_edge(START, "find_content")
-        
-        # Add conditional edge từ find_content
-        workflow.add_conditional_edges(
-            "find_content",
-            router_decision,
-            {
-                "summarization": "summarization",
-                END: END
-            }
-        )
-        
+        workflow.add_edge("find_content", "summarization")
         workflow.add_edge("summarization", END)
         
         return workflow.compile()

@@ -1,104 +1,95 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-find_document_node_prompt = ChatPromptTemplate.from_template(
+find_titles_prompt = ChatPromptTemplate.from_template(
 """
-<ROLE> 
-Bạn là một công cụ tìm kiếm ngữ nghĩa thông minh cho một thư viện tài liệu. 
-</ROLE> 
+<ROLE>
+Bạn là một công cụ phân tích ý định và đối sánh ngữ nghĩa thông minh, chuyên trích xuất thông tin.
+</ROLE>
 
-<OBJECTIVE> 
-Nhiệm vụ của bạn là hiểu sâu yêu cầu của người dùng, tìm ra một tài liệu duy nhất phù hợp nhất từ thư viện được cung cấp, và sau đó xác định một tiêu đề duy nhất phù hợp nhất trong tài liệu đó. 
-</OBJECTIVE> 
+<OBJECTIVE>
+Nhiệm vụ của bạn là phân tích yêu cầu của người dùng (`user_request`) để **phân biệt rõ ràng** giữa:
+1.  Một **yêu cầu tìm kiếm/điều hướng** (khi người dùng muốn tìm một tiêu đề cụ thể).
+2.  Một **yêu cầu toàn bộ tài liệu** (khi người dùng muốn tóm tắt hoặc biết nội dung chính của toàn bộ tài liệu).
+3.  Một **phản hồi, mệnh lệnh chỉnh sửa, hoặc câu hỏi chung chung** (khi người dùng đưa feedback như "ngắn hơn", "dài hơn", hoặc hỏi "mạch lạc hơn đi?").
 
-<INPUT_SCHEMA> 
-library_str: Một chuỗi JSON chứa danh sách các đối tượng tài liệu. 
-Mỗi đối tượng có các trường: 
-- key (tên duy nhất trong dict, ví dụ "machine_learning_can_ban"), 
-- document_id (mã định danh của tài liệu), 
-- name (tên tài liệu), 
-- title (một danh sách các tiêu đề). 
+**CHỈ KHI** `user_request` là một **yêu cầu tìm kiếm/điều hướng** (Loại 1), bạn mới thực hiện đối sánh và tìm các tiêu đề phù hợp nhất từ `title_list`.
+</OBJECTIVE>
 
-library_length: Số nguyên cho biết số lượng tài liệu có trong thư viện.
+<INPUT_SCHEMA>
+title_list: Một danh sách JSON (list) các chuỗi (string), đại diện cho các tiêu đề có sẵn trong một tài liệu đã được chọn trước.
+user_request: Một chuỗi văn bản (string) chứa truy vấn của người dùng.
+</INPUT_SCHEMA>
 
-user_request: Một chuỗi văn bản chứa truy vấn tìm kiếm của người dùng. 
-</INPUT_SCHEMA> 
-
-<INPUT> 
-Thư viện tài liệu: ```json 
-{library_str}
-```
-Số lượng tài liệu: {library_length}
-Yêu cầu của người dùng: "{user_request}"
-
+<INPUT>
+Danh sách tiêu đề: ```json
+{title_list}
+Yêu cầu của người dùng: "{user_request}" 
 </INPUT>
 
-<INSTRUCTIONS> 
-Thực hiện theo quy trình nghiêm ngặt sau:
-
-**Bước 1: Tìm kiếm tài liệu dựa trên KEY**
-1.1. Phân tích `user_request` để xác định **tên tài liệu** mà người dùng muốn tìm.
-1.2. So sánh tên tài liệu này với các **key** trong `library_str`.
-
-1.3. Xử lý kết quả so khớp:
-- **NẾU TÌM THẤY một key phù hợp:** Chọn tài liệu tương ứng với key đó và chuyển sang **Bước 2**.
-- **NẾU KHÔNG TÌM THẤY key nào phù hợp:**
-- Nếu `library_length > 1`: Trả về đối tượng JSON rỗng: `{{}}`. 
-- Nếu `library_length == 1`: Chọn tài liệu duy nhất đó và chuyển sang **Bước 2**.
-- Nếu `library_length == 0`: Trả về đối tượng JSON rỗng: `{{}}`.
-
-**Bước 2: Tìm kiếm tiêu đề trong tài liệu đã chọn**
-2.1. Phân tích `user_request` một lần nữa để xác định **tiêu đề cụ thể** mà người dùng muốn.
-2.2. So sánh tiêu đề này với danh sách `title` trong tài liệu đã chọn ở Bước 1.
-- **NẾU TÌM THẤY một title phù hợp:** Chọn title đó.
-- **NẾU KHÔNG TÌM THẤY title phù hợp** (hoặc người dùng không chỉ định tiêu đề): Trả về `["full_document"]`.
+<INSTRUCTIONS> Thực hiện theo quy trình nghiêm ngặt sau:
+1. Phân tích ý định (Intent Analysis): Đọc kỹ user_request và phân loại mục đích chính của nó vào MỘT trong hai loại sau:
+- **Loại 1: Yêu cầu Tìm kiếm/Điều hướng (Search/Navigation Request):** Người dùng chủ động muốn tìm, xem, đọc, biết về, hoặc đi đến một chủ đề, một phần nội dung cụ thể mà có khả năng được mô tả bởi một tiêu đề trong title_list.
+  --Ví dụ Loại 1: "Cho tôi xem phần Transformer", "Thông tin về CNN", "Ứng dụng thực tế là gì?", "Phần Mạng hồi tiếp".
+- **Loại 2: Yêu cầu Toàn bộ Tài liệu (Full Document Request):** Người dùng muốn thực hiện một hành động (như "tóm tắt", "nội dung chính", "nói về") trên toàn bộ tài liệu, chứ không phải một phần/tiêu đề cụ thể.
+- **Loại 3: Phản hồi/Mệnh lệnh/Chung chung (Feedback/Command/General):** Người dùng đang nhận xét về một kết quả trước đó (ví dụ: "tóm tắt dài hơn", "ngắn hơn", "mạch lạc hơn", "viết lại", "ok", "hay quá"), hoặc hỏi một câu chung chung không nhắm vào tiêu đề cụ thể (ví dụ: "Tài liệu này nói về cái gì?", "bạn là ai?").
+   --Ví dụ Loại 3: "Tóm tắt toàn bộ tài liệu", "Cho tôi biết nội dung chính của tất cả", "Tài liệu này nói về cái gì?".
+2. Quy trình xử lý (Processing Logic):
+- NẾU ý định là Loại 1 (Tìm kiếm/Điều hướng): Tiếp tục sang Bước 3 (Đối sánh).
+- NẾU ý định là Loại 2 (Toàn bộ Tài liệu): Dừng lại ngay lập tức. Kết quả của bạn là ['full_document'].
+- NẾU ý định là Loại 3 (Phản hồi/Mệnh lệnh/Chung chung): Dừng lại ngay lập tức. Kết quả của bạn là một danh sách rỗng [].
+3. Đối sánh (Matching): (Chỉ thực hiện nếu là Loại 1)
+- So sánh ý định tìm kiếm của user_request với TỪNG mục trong title_list.
+- Tìm ra TẤT CẢ các tiêu đề trong title_list phù hợp về mặt ngữ nghĩa (semantic match) hoặc khớp chính xác (exact match) với yêu cầu của người dùng.
+4. Quy tắc lựa chọn (Selection Rules):
+- NẾU TÌM THẤY một hoặc nhiều tiêu đề khớp (từ Bước 3): Trả về một danh sách chứa TẤT CẢ các tiêu đề đó.
+- NẾU KHÔNG TÌM THẤY tiêu đề nào khớp (kể cả khi là yêu cầu Loại 1 nhưng không có gì khớp): Trả về một danh sách rỗng [].
 </INSTRUCTIONS>
 
-<OUTPUT_GUIDELINES>
-Câu trả lời BẮT BUỘC phải là một đối tượng JSON duy nhất.
-Đối tượng JSON phải chứa các trường: document_id và title.
-- Trường title phải là một danh sách chỉ chứa MỘT giá trị (chuỗi hoặc null).
-- Không bao gồm bất kỳ văn bản hội thoại, lời giải thích hay định dạng markdown nào trong kết quả đầu ra.
+<OUTPUT_GUIDELINES> 
+Câu trả lời BẮT BUỘC phải là một đối tượng JSON dạng danh sách (list) các chuỗi (string). 
+Nếu là Loại 1 và tìm thấy, trả về danh sách tiêu đề (ví dụ: ["Tiêu đề A"]).
+Nếu là Loại 2, trả về ['full_document'].
+Nếu là Loại 3, hoặc Loại 1 nhưng không tìm thấy, trả về danh sách rỗng []. Không bao gồm bất kỳ văn bản hội thoại, lời giải thích, hay định dạng markdown nào.
 </OUTPUT_GUIDELINES>
 
-<EXAMPLE> 
-<INPUT> 
-Thư viện tài liệu: 
-```json {{ 
-"machine_learning_can_ban": 
-{{ "document_id": "doc_222abc", "name": "machine_learning_can_ban", 
-"title": [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ] }}, 
-"deep_learning_nang_cao":
-{{ "document_id": "doc_333xyz", "name": "deep_learning_nang_cao",
-"title": [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ] }}
-}} ```
-Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer trong tài liệu deep learning nâng cao." 
+<EXAMPLE 1: Tìm thấy một khớp (Loại 1)> <INPUT> Danh sách tiêu đề: ```json [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ]
+Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer."
 </INPUT>
 <OUTPUT> 
-{{"document_id": "doc_333xyz", "title": ["Transformer"]}}
+["Transformer"]
 </OUTPUT> 
 </EXAMPLE>
-<EXAMPLE> 
-<INPUT> 
-Thư viện tài liệu: 
-```json {{ 
-"machine_learning_can_ban": 
-{{ "document_id": "doc_222abc", "name": "machine_learning_can_ban", 
-"title": [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ] }}, 
-"deep_learning_nang_cao":
-{{ "document_id": "doc_333xyz", "name": "deep_learning_nang_cao",
-"title": [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ] }}
-}} ```
-Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer trong tài liệu toán cao cấp." 
-</INPUT>
-<OUTPUT> 
-{{}}
-</OUTPUT> 
-</EXAMPLE>
-"""
-)
 
-summarize_content_node_prompt = ChatPromptTemplate.from_template(
-    """
+
+<EXAMPLE 2: Yêu cầu cụ thể nhưng không có trong danh sách> <INPUT> Danh sách tiêu đề: ```json [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ]
+Yêu cầu của người dùng: "Cho tôi xem phần về Mạng Neuron Tích chập."
+</INPUT>
+<OUTPUT> 
+None
+</OUTPUT> 
+</EXAMPLE>
+
+<EXAMPLE 3: Phản hồi / Mệnh lệnh (Loại 3)>
+<INPUT> Danh sách tiêu đề: ```json [ "Giới thiệu", "Phân tích dữ liệu", "Mô hình học máy", "Kết luận" ]
+Yêu cầu của người dùng: "Tóm tắt ngắn hơn."
+</INPUT>
+<OUTPUT>
+[]
+</OUTPUT>
+
+<EXAMPLE 8: Yêu cầu tóm tắt toàn bộ (Loại 2) - **MỚI**>
+<INPUT>
+Danh sách tiêu đề: ```json
+["Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế"]
+Yêu cầu của người dùng: "Hãy tóm tắt toàn bộ tài liệu." 
+</INPUT> 
+<OUTPUT> ['full_document'] 
+</OUTPUT>
+""" )
+
+
+summarize_content_prompt = ChatPromptTemplate.from_template(
+"""
 <ROLE>
 Bạn là một hệ thống tóm tắt văn bản chuyên nghiệp.
 </ROLE>
@@ -140,14 +131,14 @@ Trí tuệ nhân tạo (AI) mang lại nhiều lợi ích cho các ngành như y
 """
 )
 
-router_node_prompt = ChatPromptTemplate.from_template(
+router_prompt = ChatPromptTemplate.from_template(
     """
 <ROLE>
 Bạn là một chuyên gia phân tích và điều phối yêu cầu của người dùng.
 </ROLE>
 
 <OBJECTIVE>
-Phân tích yêu cầu **hiện tại** của người dùng, dựa trên **bối cảnh** của cuộc hội thoại, và phân loại nó vào một trong bốn danh mục: summarizer, quiz_generation, rag_qa, create_form.
+Phân tích yêu cầu **hiện tại** của người dùng, dựa trên **bối cảnh** của cuộc hội thoại, và phân loại nó vào một trong bốn danh mục: summarization, quiz_generation, rag_qa, create_form.
 </OBJECTIVE>
 
 <CONTEXT>
@@ -166,14 +157,14 @@ Yêu cầu hiện tại của người dùng cần phân loại:
 
 <INSTRUCTIONS>
 Phân tích và phân loại `user_request` dựa vào `CHAT_HISTORY` theo quy tắc sau:
-- **summarizer**: nếu yêu cầu là tóm tắt nội dung của một tài liệu, sách, chương, mục đã được đề cập.
+- **summarization**: nếu yêu cầu là tóm tắt nội dung của một tài liệu, sách, chương, mục đã được đề cập.
 - **quiz_generation**: nếu yêu cầu sinh câu hỏi, tạo quiz, hoặc đề kiểm tra dựa trên tài liệu đã có trong bối cảnh.
 - **rag_qa**: nếu yêu cầu là trả lời một câu hỏi cụ thể từ tài liệu đã tải lên (ví dụ: "Trong chương 1 sách X nói gì về Y?").
 - **create_form**: nếu yêu cầu tạo Google Form, chuyển đổi quiz sang form, hoặc tạo form từ bộ câu hỏi đã có trong bối cảnh.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
-Câu trả lời của bạn BẮT BUỘC chỉ được là MỘT trong bốn chuỗi sau: summarizer, quiz_generation, rag_qa, create_form.
+Câu trả lời của bạn BẮT BUỘC chỉ được là MỘT trong bốn chuỗi sau: summarization, quiz_generation, rag_qa, create_form.
 Không thêm bất kỳ văn bản, giải thích, hay ký tự nào khác.
 </OUTPUT_GUIDELINES>
 """

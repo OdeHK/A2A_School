@@ -10,7 +10,7 @@ from oauth2client import client, file, tools
 from langgraph.graph import StateGraph, END
 
 from services.document_processing import document_library
-from services.summarization.prompt import router_node_prompt
+from services.summarization.prompt import router_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
@@ -106,7 +106,7 @@ class TeacherAgent:
             # Step 3: Xác định lộ trình dựa trên yêu cầu + ngữ cảnh
             # -----------------------------
             llm_input = {"user_request": state["user_request"], "chat_history": context_for_llm}
-            routing_chain = router_node_prompt | llm | StrOutputParser()
+            routing_chain = router_prompt | llm | StrOutputParser()
             route = routing_chain.invoke(llm_input)
 
             logger.info(f" -> Lộ trình được quyết định: '{route}'")
@@ -129,44 +129,40 @@ class TeacherAgent:
             return {
                 "route": route,
             }
-        def summarizer_node(state: ParentGraphState):
+        def summarization_node(state: ParentGraphState):
             """Thực thi subgraph tóm tắt sử dụng SummarizationService."""
             logger.info("--- 2a. EXECUTING: Subgraph Tóm tắt ---")
             
-            user_request = state["user_request"]
+            user_request = state["user_request"] 
+            username = state["username"]
+            selected_document_id = state["selected_document_id"]
             
-            # Tìm matched_document từ memory entries gần đây với task_type="summary"
-            # hoặc từ metadata có document_id và title
-            matched_document = None
-            logger.info(f"Memory entries: {self.memory.entries}")
-            if self.enable_memory and self.memory:
-                for entry in reversed(self.memory.entries):
-                    
-                    if entry.task_type == "summary":
-                        doc_id = entry.metadata.get("document_id")
-                        title = entry.metadata.get("title")
-                        if doc_id and title:
-                            matched_document = {
-                                "document_id": doc_id,
-                                "title": title  
-                            }
-                            logger.info(f"Found matched_document from memory: {matched_document}")
-                            break
-            
-            # Get conversation context from memory
-            context_for_llm = ""
-            if self.enable_memory and self.memory:
-                context_for_llm = self.memory.get_context_for_llm(
-                    task_type="summary"
-                )
-            
-            # Use SummarizationService to generate summary
-            # matched_document có thể None - SummarizationService sẽ tự tìm
             try:
-                summary, matched_document = self.summarization_service.generate_summary(
+                if not selected_document_id or not user_request:
+                    logger.warning("Cần cung cấp document_id và yêu cầu người dùng.")
+                    return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
+                titles =  None
+                logger.info(f"Memory entries: {self.memory.entries}")
+                if self.enable_memory and self.memory:
+                    for entry in reversed(self.memory.entries):
+                        if entry.task_type == "summary" and entry.metadata.get("document_id") == selected_document_id:
+                            titles = entry.metadata.get("titles", None)
+                            logger.info(f"Found matched_document from memory: {selected_document_id}")
+                            break
+                
+                # Get conversation context from memory
+                context_for_llm = ""
+                if self.enable_memory and self.memory:
+                    context_for_llm = self.memory.get_context_for_llm(
+                        task_type="summary"
+                    )
+                
+                summary, titles = self.summarization_service.generate_summary(
                     user_request=user_request,
                     context_for_llm=context_for_llm,
-                    matched_document=matched_document
+                    username=username,
+                    document_id=selected_document_id,
+                    titles=titles
                 )
                 
                 # Memory: Add agent response với metadata từ summary result
@@ -174,18 +170,24 @@ class TeacherAgent:
                     # Lưu response vào memory để lần sau có thể reference
                     self.memory.add_agent_response(
                         response=summary,
-                        metadata=matched_document if matched_document else {},
+                        metadata={
+                            "document_id": selected_document_id,
+                            "titles": titles
+                        },
                         task_type="summary"
                     )
-                
+
                 return {"answer": summary}
                 
             except Exception as e:
-                logger.error(f"Error in summarizer_node: {e}")
+                logger.error(f"Error in summarization_node: {e}")
                 error_msg = f"Lỗi khi tạo bản tóm tắt: {str(e)}"
                 
                 if self.enable_memory and self.memory:
-                    self.memory.add_agent_response(error_msg)
+                    self.memory.add_agent_response(
+                        response=error_msg,
+                        task_type="summary"
+                    )
                 
                 return {"answer": error_msg}
 
@@ -261,7 +263,7 @@ class TeacherAgent:
                 if self.enable_memory and self.memory:
                     self.memory.add_agent_response(
                         response=result,
-                        document_id=document_id,
+                        document_id=selected_document_id,
                         task_type="quiz"
                     )
 
@@ -300,7 +302,7 @@ class TeacherAgent:
         # --- Xây dựng và Compile Parent Graph ---
         workflow = StateGraph(ParentGraphState)
         workflow.add_node("router", router_node) 
-        workflow.add_node("summarizer", summarizer_node) 
+        workflow.add_node("summarization", summarization_node) 
         workflow.add_node("rag_qa", rag_qa_node)
         workflow.add_node("quiz_generation", quiz_generation_node)
         workflow.add_node("create_form", create_form_node)
@@ -310,7 +312,7 @@ class TeacherAgent:
             "router",
             decide_route,
             {
-                "summarizer": "summarizer",
+                "summarization": "summarization",
                 "quiz_generation": "quiz_generation",
                 "create_form": "create_form",
                 "rag_qa": "rag_qa",
@@ -318,7 +320,7 @@ class TeacherAgent:
             }
         )
 
-        workflow.add_edge("summarizer", END)
+        workflow.add_edge("summarization", END)
         workflow.add_edge("quiz_generation", END)
         workflow.add_edge("create_form", END)
         workflow.add_edge("rag_qa", END)

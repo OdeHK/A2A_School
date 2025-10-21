@@ -17,14 +17,9 @@ from typing import Dict, List, Optional, Any, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-# Import enhanced components
-<<<<<<<< HEAD:services/summarizer/TOC_generator.py
-from services.summarizer.token_manager import TokenManager, create_token_manager
-from services.summarizer.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
-========
+
 from services.summarization.token_manager import TokenManager, create_token_manager
 from services.summarization.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
->>>>>>>> e0b4257 (create summarization folder, create summarization  serivce,and use  short term memory):services/summarization/TOC_generator.py
 
 logger = logging.getLogger(__name__)
 
