@@ -66,9 +66,27 @@ sequenceDiagram
 
 
 
-## 🛠️ Cài đặt
+### 🛠️ Cài đặt
 
-### Requirements
+### Requirements (Conda environment)
+
+Sử dụng file môi trường Conda: `agent_for_teacher_environment.yml`.
+File này chứa cả thư viện cần thiết để chạy chương trình. Để tạo môi trường trên máy Windows:
+
+```bash
+conda env create -f .\agent_for_teacher_environment.yml
+```
+
+Sau khi tạo xong, kích hoạt môi trường:
+
+```bash
+conda activate agent_for_teacher
+```
+
+Ghi chú:
+- File YAML đã liệt kê các gói cần thiết dưới phần `dependencies` và một số gói pip dưới mục `pip:`; chỉ cần chạy lệnh `conda env create` là đủ.
+- Nếu bạn không sử dụng Conda, bạn có thể cài thủ công bằng `pip`: 
+
 ```bash
 pip install langchain langchain-community langchain-nvidia-ai-endpoints
 pip install langchain-google-genai langchain-chroma
@@ -78,7 +96,7 @@ pip install gradio pymupdf pydantic pydantic-settings
 ### Environment Variables
 Tạo file `.env` từ template:
 ```bash
-cp .env.example .env
+copy .env.example .env
 ```
 
 Sau đó cập nhật các giá trị trong file `.env`:
