@@ -2,6 +2,7 @@
 session_data/
 vector_db/
 demo/
+temp_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
