@@ -1,10 +1,16 @@
 # backend.py
 import os
+import re
 import json
 import hashlib
 import pickle
 import logging
 import random
+import spacy
+from nltk import FreqDist
+from nltk.corpus import brown
+import textdistance
+from flashtext import KeywordProcessor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
@@ -17,6 +23,7 @@ from langchain_community.vectorstores import Chroma, FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -66,6 +73,23 @@ def extract_pages_from_pdf(pdf_path: str, page_numbers: List[int]) -> str:
                 logger.warning(f"Trang {page_num} không tồn tại trong {pdf_path}")
     return text
 
+def normalize_code_field(code):
+        """Chuyển None hoặc 'null' thành chuỗi rỗng để hiển thị đẹp"""
+        if code is None:
+            return ""
+        if isinstance(code, str) and code.strip().lower() == "null":
+            return ""
+        return code
+
+def clean_text(text: str) -> str:
+    """Chuẩn hóa text: tách từ dính, loại bỏ URL, email, số điện thoại"""
+    # tách chữ dính (cơ bản)
+    text = re.sub(r'([a-zA-Z])([A-Z])', r'\1 \2', text)
+    # loại bỏ số điện thoại, URL, email
+    text = re.sub(r'\b\d{2,}\b', '', text)
+    text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r'\S+@\S+', '', text)
+    return text.strip()
 
 # ===================== Document Processor =====================
 class DocumentProcessor:
@@ -74,29 +98,27 @@ class DocumentProcessor:
         self.cache_dir = Path(settings.CACHE_DIR)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def validate_files(self, files: List) -> None:
-        """Validate the total size of the uploaded files."""
-        total_size = sum(os.path.getsize(f.name) for f in files)
+    def validate_files(self, files: List[str]) -> None:
+        total_size = sum(os.path.getsize(f) for f in files)
         if total_size > constants.MAX_TOTAL_SIZE:
             raise ValueError(f"Total size exceeds {constants.MAX_TOTAL_SIZE//1024//1024}MB limit")
 
-    def process(self, files: List) -> List:
-        """Process files with caching for subsequent queries"""
+    def process(self, files: List[str]) -> List:
         self.validate_files(files)
         all_chunks = []
         seen_hashes = set()
 
         for file in files:
             try:
-                with open(file.name, "rb") as f:
+                with open(file, "rb") as f:
                     file_hash = self._generate_hash(f.read())
                 cache_path = self.cache_dir / f"{file_hash}.pkl"
 
                 if self._is_cache_valid(cache_path):
-                    logger.info(f"Loading from cache: {file.name}")
+                    logger.info(f"Loading from cache: {file}")
                     chunks = self._load_from_cache(cache_path)
                 else:
-                    logger.info(f"Processing and caching: {file.name}")
+                    logger.info(f"Processing and caching: {file}")
                     chunks = self._process_file(file)
                     self._save_to_cache(chunks, cache_path)
 
@@ -107,21 +129,59 @@ class DocumentProcessor:
                         seen_hashes.add(chunk_hash)
 
             except Exception as e:
-                logger.error(f"Failed to process {file.name}: {str(e)}")
+                logger.error(f"Failed to process {file}: {str(e)}")
                 continue
 
         logger.info(f"Total unique chunks: {len(all_chunks)}")
+
+        # ===== LƯU JSON METADATA =====
+        metadata_list = [chunk.metadata for chunk in all_chunks]
+        json_path = self.cache_dir / "all_chunks_metadata.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(metadata_list, f, ensure_ascii=False, indent=2)
+        logger.info(f"Metadata saved to {json_path}")
+
+
         return all_chunks
 
-    def _process_file(self, file) -> List:
-        """Convert file to markdown then split"""
-        if not file.name.endswith(('.pdf', '.docx', '.txt', '.md')):
-            logger.warning(f"Skipping unsupported file type: {file.name}")
+    def _process_file(self, file_path: str) -> List:
+        ext = Path(file_path).suffix.lower()
+        if ext not in ('.pdf', '.docx', '.txt', '.md'):
+            logger.warning(f"Skipping unsupported file type: {file_path}")
             return []
-        converter = DocumentConverter()
-        markdown = converter.convert(file.name).document.export_to_markdown()
-        splitter = MarkdownHeaderTextSplitter(self.headers)
-        return splitter.split_text(markdown)
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=700,
+            chunk_overlap=20,
+            separators=["\n\n", "\n", ".", " ", ""],
+        )
+
+        docs = []
+
+        if ext == ".pdf":
+            loader = PyMuPDF4LLMLoader(file_path,mode="page")
+            raw_docs = loader.load()
+            for d in raw_docs:
+                page_chunks = text_splitter.split_documents([d])
+                for chunk in page_chunks:
+                    # copy toàn bộ metadata từ page gốc
+                    chunk.metadata = {**d.metadata, **chunk.metadata}
+                    # gắn thêm source và page cho chắc
+                    chunk.metadata.update({
+                        "source": file_path,
+                        "page": d.metadata.get("page", None)
+                    })
+                docs.extend(page_chunks)
+
+        else:
+            converter = DocumentConverter()
+            markdown = converter.convert(file_path).document.export_to_markdown()
+            chunks = text_splitter.create_documents([markdown])
+            for chunk in chunks:
+                chunk.metadata.update({"source": file_path})
+            docs.extend(chunks)
+
+        return docs
 
     def _generate_hash(self, content: bytes) -> str:
         return hashlib.sha256(content).hexdigest()
@@ -140,6 +200,7 @@ class DocumentProcessor:
             return False
         cache_age = datetime.now() - datetime.fromtimestamp(cache_path.stat().st_mtime)
         return cache_age < timedelta(days=settings.CACHE_EXPIRE_DAYS)
+
 
 
 # ===================== Retriever Builder =====================
@@ -170,42 +231,43 @@ class RetrieverBuilder:
 
 # ===================== Quiz Crafter =====================
 
+# backend.py
+
+
 class QuizCrafter:
-    def __init__(self, llm=None, embeddings=None):
+    def __init__(self, documents=None, llm=None, embeddings=None):
         self.system = SYSTEM_MSG
         self.user = USER_MSG
-        self.llm = llm or ChatOllama(model="gemma3:4b", temperature=0.7, top_k=80, top_p=0.9, seed=0, base_url="http://localhost:11434",num_ctx=8192)
+        self.documents = documents or []
+        self.llm = llm or ChatOllama(
+            model="gemma3:4b",
+            temperature=0.7,
+            top_k=80,
+            top_p=0.9,
+            seed=0,
+            base_url="http://localhost:11434",
+            num_ctx=8192,
+        )
         self.embeddings = embeddings or HuggingFaceEmbeddings(
             model_name="Alibaba-NLP/gte-multilingual-base",
-            model_kwargs={"trust_remote_code": True}
+            model_kwargs={"trust_remote_code": True},
+            encode_kwargs={"normalize_embeddings": True},
         )
-        self.documents = None
         self.index = None
 
-    def load_docs(self, file_path: str):
-        from langchain_community.document_loaders import PyMuPDFLoader
-        loader = PyMuPDFLoader(file_path)
-        self.documents = loader.load()
-        return self.documents
-
-    def load_text(self, text: str, metadata: dict = None):
-        from langchain_core.documents import Document
-        if metadata is None:
-            metadata = {"source": "user_text"}
-        self.documents = [Document(page_content=text, metadata=metadata)]
-        return self.documents
-
-    def split_docs(self, documents, chunk_size=700, chunk_overlap=20):
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        return text_splitter.split_documents(documents=documents)
-
+        # 🔹 NLP toolkits
+        self.nlp = spacy.load("en_core_web_sm")
+        self.fdist = FreqDist(brown.words())
+        
+        self.levenshtein_similarity = textdistance.levenshtein.normalized_similarity
+        self.levenshtein_distance = textdistance.levenshtein.normalized_distance
     def create_index(self):
-        from langchain_community.vectorstores import FAISS
-        if self.documents is None:
-            raise ValueError("Bạn phải load_docs() hoặc load_text() trước khi tạo index.")
-        docs_split = self.split_docs(self.documents)
-        self.index = FAISS.from_documents(documents=docs_split, embedding=self.embeddings)
+        if not self.documents:
+            raise ValueError("Chưa có documents để tạo index")
+        if self.index is None:
+            self.index = FAISS.from_documents(
+                documents=self.documents, embedding=self.embeddings
+            )
         return self.index
 
     def get_similar_docs(self, query: str, k: int = 2):
@@ -213,43 +275,167 @@ class QuizCrafter:
             raise ValueError("Index chưa được tạo. Gọi create_index() trước.")
         return self.index.similarity_search(query=query, k=k)
 
-    def load_chat_msg(self, topic: str):
-        from langchain_core.messages import SystemMessage, HumanMessage
-        self.create_index()
+    # -------------------- 🔹 Keyword Extraction --------------------
+    def get_keywords_from_index(self, topic: str, max_keywords: int = 5):
+        """Trích xuất keywords từ FAISS index dựa vào topic"""
+        if self.index is None:
+            self.create_index()
+
         if topic:
-            query = self.get_similar_docs(topic, k=4)
+            docs = self.get_similar_docs(topic, k=max_keywords*2)
         else:
-            query = self.documents[:4] if len(self.documents) >= 4 else self.documents
-        text = "".join([doc.page_content for doc in query])
-        messages = [SystemMessage(content=self.system), HumanMessage(content=self.user.format(context=text))]
-        return messages
+            docs = self.documents
 
+        raw_text = "\n".join(doc.page_content for doc in docs)
+        text = clean_text(raw_text)
 
+        doc = self.nlp(text)
 
-    def get_questions(self, topic: str = ""):
-        # 1️⃣ Tạo message cho LLM dựa trên topic
-        messages = self.load_chat_msg(topic)
-        
-        # 2️⃣ Gọi LLM
-        result = self.llm.invoke(messages)
-        
-        # 3️⃣ Chuẩn hóa output, loại bỏ markdown code block nếu có
-        result_text = str(result.content).strip().rstrip()
-        result_text = result_text.strip("```json\n").rstrip("```")
-        
-        # 4️⃣ Chuyển JSON string thành Python object
-        try:
-            questions = json.loads(result_text)
-            
-            # 5️⃣ Lưu ra file JSON để kiểm tra nếu cần
-            with open("questions.json", "w", encoding="utf-8") as f:
-                json.dump(questions, f, indent=4, ensure_ascii=False)
-            
-            return questions
-        except json.JSONDecodeError:
-            logger.error("Không parse được JSON từ LLM output")
+        # lấy noun chunks
+        phrases = {}
+        for np in doc.noun_chunks:
+            phrase = np.text.strip()
+            if len(phrase.split()) > 1:
+                phrases[phrase] = phrases.get(phrase, 0) + 1
+
+        phrase_keys = sorted(phrases.keys(), key=lambda x: len(x), reverse=True)
+
+        # lọc trùng bằng Levenshtein
+        filtered = []
+        for ph in phrase_keys:
+            # loại bỏ các keyword có similarity ≥ 0.7 với keyword đã chọn
+            if all(self.levenshtein_similarity(ph, f) < 0.7 for f in filtered):
+                filtered.append(ph)
+            if len(filtered) >= max_keywords:
+                break
+
+        json_file = "all_keywords.json"
+        if os.path.exists(json_file):
+            with open(json_file, "r", encoding="utf-8") as f:
+                all_keywords = json.load(f)
+        else:
+            all_keywords = {}
+
+        all_keywords[topic] = filtered  # cập nhật hoặc thêm mới
+
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(all_keywords, f, ensure_ascii=False, indent=2)
+
+        return filtered
+
+    # -------------------- 🔹 Parse JSON --------------------
+    def parse_json(self, text: str):
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+
+        match = re.search(r"\{.*\}", text, re.S)
+        if not match:
+            logger.warning("Không tìm thấy JSON object trong output: %s", text)
             return None
+
+        try:
+            return json.loads(match.group(0))
+        except Exception as e:
+            logger.error("Parse JSON fail: %s", e)
+            return None
+
+    # -------------------- 🔹 Sinh câu hỏi --------------------
     
+
+    def get_questions(self, topic: str = "", count: int = 5):
+        """
+        Sinh câu hỏi dựa trên keyword. Nếu thất bại thì fallback sang context.
+        """
+        keywords = self.get_keywords_from_index(topic, max_keywords=count)
+
+        if not keywords:
+            logger.warning("Không có keyword nào, fallback sang context.")
+            return self._get_questions_from_context(topic, count)
+
+        questions = []
+        for idx, kw in enumerate(keywords, start=1):
+            system_msg = self.system.replace("{count}", "1")
+            messages = [
+                SystemMessage(content=system_msg),
+                HumanMessage(content=self.user.format(context=kw)),
+            ]
+
+            try:
+                result = self.llm.invoke(messages)
+                q = self.parse_json(str(result.content).strip())
+
+                if q:
+                    if isinstance(q, dict):
+                        q["code"] = normalize_code_field(q.get("code"))
+                        q["id"] = idx
+                        questions.append(q)
+                    elif isinstance(q, list) and len(q) > 0:
+                        q[0]["code"] = normalize_code_field(q[0].get("code"))
+                        q[0]["id"] = idx
+                        questions.append(q[0])
+
+                else:
+                    questions.append({
+                        "id": idx,
+                        "question": f"Câu hỏi về: {kw}",
+                        "options": [],
+                        "answer": None,
+                        "code": ""
+                    })
+
+            except Exception as e:
+                logger.error("Lỗi sinh câu hỏi %s: %s", idx, e)
+                questions.append({
+                    "id": idx,
+                    "question": f"Câu hỏi về: {kw}",
+                    "options": [],
+                    "answer": None,
+                    "code": ""
+                })
+
+        if len(questions) < count:
+            extra_qs = self._get_questions_from_context(topic, count - len(questions))
+            # normalize luôn code trong extra_qs
+            for q in extra_qs:
+                q["code"] = normalize_code_field(q.get("code"))
+            questions.extend(extra_qs)
+
+        # lưu ra JSON
+        with open("questions.json", "w", encoding="utf-8") as f:
+            json.dump(questions, f, indent=4, ensure_ascii=False)
+
+        return questions[:count]
+
+    # -------------------- 🔹 Fallback Context Mode --------------------
+    def _get_questions_from_context(self, topic: str, count: int):
+        if self.index is None:
+            self.create_index()
+
+        if topic:
+            query_docs = self.get_similar_docs(topic, k=4)
+        else:
+            query_docs = self.documents[:4]
+
+        text = "\n\n".join(doc.page_content for doc in query_docs)
+
+        system_msg = self.system.replace("{count}", str(count))
+        messages = [
+            SystemMessage(content=system_msg),
+            HumanMessage(content=self.user.format(context=text)),
+        ]
+
+        result = self.llm.invoke(messages)
+        raw_text = str(result.content).strip()
+
+        try:
+            data = json.loads(re.search(r"\[.*\]", raw_text, re.S).group(0))
+        except Exception as e:
+            logger.error("Parse context JSON fail: %s", e)
+            return []
+
+        return data[:count]
+
 
 
 
@@ -289,6 +475,10 @@ def summarize_chapter_with_llamaindex(chapter_text: str, title: str):
     summary_text = str(summary)
 
     return summary_text
+
+
+
+
 
 
 
