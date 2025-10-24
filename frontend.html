@@ -92,7 +92,6 @@
       width: 80px;
       margin-left: 5px;
     }
-    /* Loading dots */
     .loading { display: inline-block; }
     .dot { height: 6px; width: 6px; margin: 0 2px; background-color: #555;
       border-radius: 50%; display: inline-block; animation: blink 1.4s infinite both; }
@@ -115,6 +114,11 @@
   <!-- Panel chức năng -->
   <div class="side-panel">
     <div class="card">
+      <h3>🔑 Đăng nhập</h3>
+      <button onclick="loginGoogle()">Đăng nhập Google</button>
+    </div>
+
+    <div class="card">
       <h3>📂 Upload PDF</h3>
       <input type="file" id="pdfFile">
       <button onclick="uploadPDF()">Upload</button>
@@ -125,14 +129,22 @@
       <h3>Tạo quiz</h3>
       <label><input type="radio" name="quizScope" value="all" checked> Toàn bộ tài liệu</label><br>
       <label><input type="radio" name="quizScope" value="part"> Một phần tài liệu</label><br>
-      <label>Số câu hỏi:
-        <input type="number" id="quizCount" value="5" min="1">
-      </label><br><br>
+      <label>Số câu hỏi: <input type="number" id="quizCount" value="5" min="1"></label><br><br>
       <div id="quizRange" style="display:none;">
         <label>Trang bắt đầu: <input type="number" id="quizStart" value="1" min="1"></label><br>
         <label>Trang kết thúc: <input type="number" id="quizEnd" value="5" min="1"></label><br>
       </div>
       <button onclick="generateQuiz()">Tạo quiz</button>
+    </div>
+
+    <div class="card" id="createQuizCard" style="display:none;">
+      <h3>📢 Tạo bài kiểm tra chính thức</h3>
+      <button onclick="createQuiz()">Tạo bài kiểm tra</button>
+      <div id="quizLink" style="margin-top:10px;color:green;font-size:14px;"></div>
+      <h4 style="margin-top:15px;">📧 Gửi link cho học sinh</h4>
+      <textarea id="emails" placeholder="Mỗi email 1 dòng" style="width:100%;height:80px;"></textarea><br>
+      <textarea id="message" placeholder="Nội dung email" style="width:100%;height:60px;"></textarea><br>
+      <button onclick="sendQuizEmails()">Gửi Email</button>
     </div>
 
     <div class="card">
@@ -148,6 +160,10 @@
   </div>
 
   <script>
+    function loginGoogle() {
+      window.location.href = "http://127.0.0.1:8000/login";
+    }
+
     let currentFilePath = null;
 
     function addMessage(text, sender, isLoading = false) {
@@ -160,79 +176,105 @@
       return msg;
     }
 
+    // 🧠 Khi tải lại trang -> khôi phục lịch sử cũ
+    window.onload = async function() {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/load_conversation", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.file_path) {
+          currentFilePath = data.file_path;
+          document.getElementById("uploadedFile").textContent = "✅ Đã khôi phục file: " + currentFilePath.split("/").pop();
+          addMessage("📂 Đã khôi phục file PDF trước đó", "bot");
+        }
+
+        if (data.history && data.history.length > 0) {
+          addMessage("💬 Đang tải lại cuộc hội thoại cũ...", "bot");
+          for (const msg of data.history) {
+            const html = marked.parse(msg.message);
+            const elem = addMessage(html, msg.sender);
+            await MathJax.typesetPromise([elem]);
+          }
+        }
+      } catch (err) {
+        console.error("❌ Không tải được lịch sử:", err);
+      }
+    };
+
+    // 🗨️ Gửi tin nhắn + lưu lại lịch sử
     async function sendMessage() {
-  const input = document.getElementById('userMsg');
-  const text = input.value.trim();
-  if (!text) return;
+      const input = document.getElementById('userMsg');
+      const text = input.value.trim();
+      if (!text) return;
 
-  // hiển thị tin nhắn user
-  addMessage(text, 'user');
-  input.value = '';
+      addMessage(text, 'user');
+      input.value = '';
 
-  // hiển thị loading
-  const loadingMsg = addMessage("", 'bot', true);
+      await fetch("http://127.0.0.1:8000/save_message", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sender: "user", message: text})
+      });
 
-  try {
-    if (!currentFilePath) {
-      loadingMsg.textContent = "⚠️ Vui lòng upload file PDF trước khi chat";
-      return;
+      const loadingMsg = addMessage("", 'bot', true);
+
+      try {
+        let formData = new FormData();
+        formData.append("file_path", currentFilePath);
+        formData.append("question", text);
+
+        const res = await fetch("http://127.0.0.1:8000/chat_with_doc", {
+          method: "POST",
+          body: formData,
+          credentials: "include"
+        });
+        const answer = await res.text();
+        loadingMsg.innerHTML = marked.parse(answer);
+        await MathJax.typesetPromise([loadingMsg]);
+
+        await fetch("http://127.0.0.1:8000/save_message", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({sender: "bot", message: answer})
+        });
+
+      } catch (err) {
+        console.error(err);
+        loadingMsg.textContent = "❌ Lỗi khi gọi chatbot";
+      }
     }
 
-    let formData = new FormData();
-    formData.append("file_path", currentFilePath);
-    formData.append("question", text);
-
-    const res = await fetch("http://127.0.0.1:8000/chat_with_doc", {
-      method: "POST",
-      body: formData
-    });
-    const answer = await res.text(); // backend đã chuẩn hóa
-    loadingMsg.innerHTML = marked.parse(answer || "⚠️ Bot không có phản hồi");
-    MathJax.typesetPromise([loadingMsg])
-    .then(() => console.log("MathJax render xong!"))
-    .catch(err => console.error(err.message));
-
-  } catch (err) {
-    console.error(err);
-    loadingMsg.textContent = "❌ Lỗi khi gọi chatbot";
-  }
-}
-
-
     async function uploadPDF() {
-  const fileInput = document.getElementById("pdfFile");
-  if (!fileInput.files.length) {
-    alert("Vui lòng chọn file PDF");
-    return;
-  }
-  const formData = new FormData();
-  formData.append("file", fileInput.files[0]);
-
-  const res = await fetch("http://127.0.0.1:8000/upload", {
-    method: "POST",
-    body: formData
-  });
-  const data = await res.json();
-
-  // ⚡ Kiểm tra key trong response
-  currentFilePath = data.file_path || data.filepath;
-
-  if (currentFilePath) {
-    document.getElementById("uploadedFile").textContent = 
-      "✅ Đã upload: " + fileInput.files[0].name;
-    addMessage("✅ File PDF đã upload: " + fileInput.files[0].name, "bot");
-  } else {
-    addMessage("❌ Upload thất bại, không nhận được đường dẫn file", "bot");
-  }
-}
-
-    async function generateQuiz() {
-      if (!currentFilePath) {
-        alert("Vui lòng upload file PDF trước");
+      const fileInput = document.getElementById("pdfFile");
+      if (!fileInput.files.length) {
+        alert("Vui lòng chọn file PDF");
         return;
       }
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      const res = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include"
+      });
+      const data = await res.json();
+
+      currentFilePath = data.file_path || data.filepath;
+
+      if (currentFilePath) {
+        document.getElementById("uploadedFile").textContent = "✅ Đã upload: " + fileInput.files[0].name;
+        addMessage("✅ File PDF đã upload: " + fileInput.files[0].name, "bot");
+      } else {
+        addMessage("❌ Upload thất bại", "bot");
+      }
+    }
+
+    async function generateQuiz() {
+      if (!currentFilePath) return alert("Vui lòng upload file PDF trước");
       const scope = document.querySelector('input[name="quizScope"]:checked').value;
-      const count = document.getElementById('quizCount').value;
+      const count = parseInt(document.getElementById('quizCount').value, 10);
       let formData = new FormData();
       formData.append("file_path", currentFilePath);
       formData.append("scope", scope);
@@ -250,28 +292,36 @@
 
       const res = await fetch("http://127.0.0.1:8000/generate_quiz", {
         method: "POST",
-        body: formData
+        body: formData,
+        credentials: "include"
       });
       const answer = await res.text();
       loadingMsg.innerHTML = marked.parse(answer);
-      MathJax.typesetPromise();
+      await MathJax.typesetPromise();
+      document.getElementById('createQuizCard').style.display = 'block';
+    }
+
+    async function createQuiz() {
+      const res = await fetch("http://127.0.0.1:8000/publish_quiz", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (data.quiz_link) {
+        document.getElementById("quizLink").textContent = "📎 Link bài kiểm tra: " + data.quiz_link;
+        addMessage("📎 Link bài kiểm tra: " + data.quiz_link, "bot");
+      } else {
+        document.getElementById("quizLink").textContent = "⚠️ " + (data.error || "Không tạo được link");
+      }
     }
 
     async function generateSummary() {
-      if (!currentFilePath) {
-        alert("Vui lòng upload file PDF trước");
-        return;
-      }
+      if (!currentFilePath) return alert("Vui lòng upload file PDF trước");
       const scope = document.querySelector('input[name="summaryScope"]:checked').value;
       let formData = new FormData();
       formData.append("file_path", currentFilePath);
       formData.append("scope", scope);
 
       if (scope === "part") {
-        const start = document.getElementById('summaryStart').value;
-        const end = document.getElementById('summaryEnd').value;
-        formData.append("start", start);
-        formData.append("end", end);
+        formData.append("start", document.getElementById('summaryStart').value);
+        formData.append("end", document.getElementById('summaryEnd').value);
       }
 
       addMessage(`Đang tóm tắt...`, 'user');
@@ -279,14 +329,14 @@
 
       const res = await fetch("http://127.0.0.1:8000/generate_summary", {
         method: "POST",
-        body: formData
+        body: formData,
+        credentials: "include"
       });
-      const summaryText = await res.text(); // nhận text thô từ backend
-      loadingMsg.innerHTML = marked.parse("📝 Tóm tắt: " + summaryText); // hiển thị Markdown + MathJax
-      MathJax.typesetPromise([loadingMsg]);
+      const summaryText = await res.text();
+      loadingMsg.innerHTML = marked.parse("📝 " + summaryText);
+      await MathJax.typesetPromise([loadingMsg]);
     }
 
-    // Toggle hiển thị input theo scope
     document.querySelectorAll('input[name="quizScope"]').forEach(radio => {
       radio.addEventListener('change', () => {
         document.getElementById('quizRange').style.display = radio.value === 'part' ? 'block' : 'none';
@@ -300,3 +350,4 @@
   </script>
 </body>
 </html>
+
