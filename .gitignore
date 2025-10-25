@@ -2,6 +2,7 @@
 vector_db/
 demo/
 temp_data/
+.gradio/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
