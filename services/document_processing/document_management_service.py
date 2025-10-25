@@ -12,9 +12,6 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-
-from langchain.schema.document import Document
-
 from services.models import (
     DocumentMetadata, 
     TableOfContents, 
@@ -22,16 +19,12 @@ from services.models import (
     ProcessingResult, 
     ProcessingStatus
 )
-
-from .document_repository import DocumentRepository
 from .toc_extractor import TOCExtractor
 from .document_loader import DocumentLoader, DocumentType
 from .document_chunker import DocumentChunker, ChunkingStrategyType
-from .document_library import generate_document_id
 from services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
-
 
 class DocumentManagementService:
     """
@@ -243,7 +236,7 @@ class DocumentManagementService:
             Table of contents or None if not found
         """
         # Lấy TOC structure data thay vì legacy TOC
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
@@ -261,22 +254,14 @@ class DocumentManagementService:
             Table of contents formatted as string or None if not found
         """
         # Lấy TOC structure data trực tiếp
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
         if not toc_structure_data:
             return None
         logger.info(f"Raw TOC structure data: {toc_structure_data}")
 
         # Remove full_document entries and convert to dictionary
         return self._format_toc_structure_as_string(document_id, toc_structure_data)
-    
-    # def list_session_documents(self) -> List[DocumentMetadata]:
-    #     """
-    #     List all documents in current session.
-        
-    #     Returns:
-    #         List of document metadata
-    #     """
-    #     return self.database_service.li()
+
 
     def get_content_data(self, username: str, document_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -536,7 +521,6 @@ class DocumentManagementService:
         
         result = []
         result.append(f"Table of Contents for Document: {document_id}")
-        result.append(f"Extraction Method: enhanced_textrank")
         result.append(f"Extracted on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         result.append("-" * 50)
         
