@@ -201,7 +201,7 @@ class TOCGenerator:
     with different content generation strategies.
     """
 
-    def __init__(self, pdf_path: str = None, strategy: Optional[TOCContentStrategy] = None):
+    def __init__(self, pdf_path: str, strategy: Optional[TOCContentStrategy] = None):
         """
         Initialize TOC generator.
         
@@ -280,115 +280,17 @@ class TOCGenerator:
         result_tree.append(full_document_node)
         
         return result_tree
-
-    def generate_toc_up_to_title(self, title: str, **strategy_kwargs) -> List[BookmarkNode]:
-        """
-        Generates content from leaf nodes up to the specified title node.
-
-        This method processes only the necessary parts of the PDF but returns 
-        the entire TOC tree. Nodes not in the target path will have no content.
-
-        Args:
-            title (str): The exact title of the bookmark to generate content for.
-            **strategy_kwargs: Additional keyword arguments for the content generation strategy.
-
-        Returns:
-            List[BookmarkNode]: The full bookmark tree, with content generated only 
-                                for the specified title's path. Returns an empty
-                                list if the title is not found.
-        """
-        if not self.strategy:
-            raise RuntimeError("No content generation strategy set. Use set_strategy() first.")
-
-        logger.info(f"Generating TOC up to title '{title}' using strategy: {self.strategy.strategy_name}")
-
-        # Special case: handle full_document
-        if title == "full_document":
-            # First, process all root nodes
-            for i, root in enumerate(self.bookmark_tree):
-                next_root_page = None
-                if i + 1 < len(self.bookmark_tree):
-                    next_root_page = self.bookmark_tree[i + 1].page
-                self.process_node(root, next_root_page, **strategy_kwargs)
-            
-            # Create full_document node with all existing nodes as children
-            full_document_node = BookmarkNode(
-                title="full_document",
-                page=1,
-                children=self.bookmark_tree.copy()
-            )
-            
-            # Process the full_document node
-            self.process_node(full_document_node, len(self.reader.pages) + 1, **strategy_kwargs)
-            
-            # Return tree with full_document node
-            result_tree = self.bookmark_tree.copy()
-            result_tree.append(full_document_node)
-            return result_tree
-
-        # 1. Find the target node and the path to it
-        target_node, path = self._find_node_and_path(title)
-        if not target_node:
-            logger.warning(f"Title '{title}' not found in bookmarks.")
-            return []
-
-        # 2. Determine the page number where the target section ends
-        flat_bookmarks = self._flatten_bookmarks()
-        try:
-            current_index = flat_bookmarks.index(target_node)
-        except ValueError:
-            logger.error(f"Could not find the target node in the flattened list.")
-            return self.bookmark_tree
-
-        next_page = None
-        for i in range(current_index + 1, len(flat_bookmarks)):
-            if flat_bookmarks[i].page is not None:
-                next_page = flat_bookmarks[i].page
-                break
-        
-        if next_page is None:
-            next_page = len(self.reader.pages) + 1
-
-        logger.info(f"Processing node '{target_node.title}' (Page: {target_node.page}). Effective end page: {next_page-1}")
-        
-        # 3. Process the target node (and its children recursively)
-        self.process_node(target_node, next_page, **strategy_kwargs)
-    
-        return self.bookmark_tree
-
-    def _find_node_and_path(self, title: str, nodes: Optional[List[BookmarkNode]] = None, path: Optional[List[BookmarkNode]] = None) -> (Optional[BookmarkNode], Optional[List[BookmarkNode]]):
-        """Recursively find a node by title and return the node and its path."""
-        if nodes is None:
-            nodes = self.bookmark_tree
-        if path is None:
-            path = []
-
-        for node in nodes:
-            current_path = path + [node]
-            if node.title == title:
-                return node, current_path
-            
-            if node.children:
-                found_node, found_path = self._find_node_and_path(title, node.children, current_path)
-                if found_node:
-                    return found_node, found_path
-        
-        return None, None
-
-    def _flatten_bookmarks(self, nodes: Optional[List[BookmarkNode]] = None) -> List[BookmarkNode]:
-        """Flatten the bookmark tree into a single list in document order."""
-        if nodes is None:
-            nodes = self.bookmark_tree
-        
-        flat_list = []
-        for node in nodes:
-            flat_list.append(node)
-            if node.children:
-                flat_list.extend(self._flatten_bookmarks(node.children))
-        return flat_list
     
     def build_bookmark_tree(self, bookmarks) -> List[BookmarkNode]:
-        """Build bookmark tree from PDF outlines."""
+        """Convert extracted PDF outlines into a nested list of BookmarkNode.
+
+        Args:
+            bookmarks: PDF outline structure from PyPDF2
+        
+        Returns:
+            List[BookmarkNode]: Nested bookmark tree
+        """
+        
         nodes = []
         
         for item in bookmarks:
@@ -464,60 +366,6 @@ class TOCGenerator:
                 node.content = self.strategy.generate_content(text, node.title, **strategy_kwargs)
             else:
                 node.content = f"({self.strategy.strategy_name}) {node.title}: (không có trang cụ thể)."
-    
-    def find_content_by_title(self, title: str, nodes: Optional[List[BookmarkNode]] = None) -> Optional[str]:
-        """Find content by title."""
-        # Special case: handle full_document
-        if title == "full_document":
-            if self.strategy:
-                # Process all root nodes first
-                for i, root in enumerate(self.bookmark_tree):
-                    next_root_page = None
-                    if i + 1 < len(self.bookmark_tree):
-                        next_root_page = self.bookmark_tree[i + 1].page
-                    if not root.content:
-                        self.process_node(root, next_root_page)
-                
-                # Create temporary full_document node and process it
-                full_document_node = BookmarkNode(
-                    title="full_document",
-                    page=1,
-                    children=self.bookmark_tree.copy()
-                )
-                self.process_node(full_document_node, len(self.reader.pages) + 1)
-                return full_document_node.content
-            else:
-                return "No strategy set for full_document content generation."
-        
-        if nodes is None:
-            nodes = self.bookmark_tree
-        
-        for node in nodes:
-            if node.title == title:
-                return node.content
-            
-            if node.children:
-                result = self.find_content_by_title(title, node.children)
-                if result:
-                    return result
-        
-        return None
-    
-    def get_all_titles(self, nodes: Optional[List[BookmarkNode]] = None) -> List[str]:
-        """Get all available titles."""
-        if nodes is None:
-            nodes = self.bookmark_tree
-        
-        titles = []
-        for node in nodes:
-            titles.append(node.title)
-            if node.children:
-                titles.extend(self.get_all_titles(node.children))
-        
-        # Add full_document as a special available title
-        titles.append("full_document")
-        
-        return titles
     
     def export_toc(self, filename: str = "table_of_contents.json"):
         """
