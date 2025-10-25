@@ -223,7 +223,7 @@ class TOCExtractor:
                 section_title=node.title,
                 parent_section_id=parent_id,
                 level=level,
-                page_number=node.page_number if hasattr(node, 'page_number') else None,
+                page_number=node.page,
                 children=children
             )
             
