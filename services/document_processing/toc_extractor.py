@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict        
-from models import TableOfContentsSection, TableOfContents
+from services.models import TableOfContentsSection, TableOfContents
 # Import from existing TOC system
 from services.summarization.TOC_generator import TOCGenerator, BookmarkNode, TaskType, TOCStrategyFactory
 

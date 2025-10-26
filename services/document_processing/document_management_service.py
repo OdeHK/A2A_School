@@ -15,7 +15,7 @@ from typing import Optional, List, Dict, Any
 from services.models import (
     DocumentMetadata, 
     TableOfContents, 
-    TocSection,
+    TableOfContentsSection,
     ProcessingResult, 
     ProcessingStatus
 )
@@ -314,25 +314,6 @@ class DocumentManagementService:
             logger.error(f"Error updating chunking strategy: {str(e)}")
             raise
     
-    # def get_current_session_id(self) -> Optional[str]:
-    #     """Get current session ID."""
-    #     return self.repository.get_current_session_id()
-    
-    # def create_new_session(self) -> str:
-    #     """Create new session."""
-    #     return self.repository.create_new_session()
-    
-    # def load_session(self, session_id: str) -> bool:
-    #     """Load existing session."""
-    #     return self.repository.load_session(session_id)
-    
-    # def get_vector_store_path(self) -> Optional[str]:
-    #     """Get vector store path for current session."""
-    #     return self.repository.get_vector_store_path()
-    
-    # def cleanup_temp_files(self) -> None:
-    #     """Clean up temporary files."""
-    #     self.repository.cleanup_temp_files()
     
     def _generate_document_id(self) -> str:
         """Generate unique document ID."""
@@ -368,24 +349,6 @@ class DocumentManagementService:
         
         return titles
     
-    # def get_service_status(self) -> Dict[str, Any]:
-    #     """
-    #     Get current service status.
-        
-    #     Returns:
-    #         Status information
-    #     """
-    #     return {
-    #         "repository_initialized": self.repository is not None,
-    #         "toc_extractor_initialized": self.toc_extractor is not None,
-    #         "loader_initialized": self.loader is not None,
-    #         "chunker_initialized": self.chunker is not None,
-    #         "current_session": self.repository.get_current_session_id(),
-    #         "chunker_strategy": (
-    #             self.chunker.strategy.strategy_name 
-    #             if hasattr(self.chunker, 'strategy') else "unknown"
-    #         )
-    #     }
     
     def _format_toc_as_string(self, toc: TableOfContents) -> str:
         """
@@ -410,12 +373,12 @@ class DocumentManagementService:
             result.extend(self._format_section_as_string(section, section_index=str(index + 1)))
         return "\n".join(result)
     
-    def _format_section_as_string(self, section: TocSection, section_index: str) -> List[str]:
+    def _format_section_as_string(self, section: TableOfContentsSection, section_index: str) -> List[str]:
         """
-        Format a single TocSection as string lines.
+        Format a single TableOfContentsSection as string lines.
         
         Args:
-            section: TocSection to format
+            section: TableOfContentsSection to format
             indent_level: Current indentation level
             
         Returns:
@@ -445,7 +408,7 @@ class DocumentManagementService:
         Returns:
             TableOfContents object
         """
-        # Convert structure data to TocSection objects
+        # Convert structure data to TableOfContentsSection objects
         sections = []
         
         for item_data in toc_structure_data:
@@ -454,7 +417,7 @@ class DocumentManagementService:
                 if 'id' not in item_data or 'title' not in item_data or 'level' not in item_data:
                     continue
                     
-                section = TocSection(
+                section = TableOfContentsSection(
                     section_id=item_data['id'],
                     section_title=item_data['title'],
                     parent_section_id=item_data.get('parent_id'),
@@ -476,21 +439,21 @@ class DocumentManagementService:
         )
     
     def _convert_children_from_structure_data(self, children_ids: List[str], 
-                                            all_structure_data: List[Dict[str, Any]]) -> List[TocSection]:
-        """Convert children IDs to TocSection objects from structure data."""
+                                            all_structure_data: List[Dict[str, Any]]) -> List[TableOfContentsSection]:
+        """Convert children IDs to TableOfContentsSection objects from structure data."""
         children = []
         
         # Create ID mapping - only include items with required fields
         id_to_item = {item['id']: item for item in all_structure_data if 'id' in item}
         
-        for child_id in children_ids:
+        for child_id in children_ids: 
             if child_id in id_to_item:
                 child_item = id_to_item[child_id]
                 # Skip items without required fields
                 if 'title' not in child_item or 'level' not in child_item:
                     continue
                     
-                child_section = TocSection(
+                child_section = TableOfContentsSection(
                     section_id=child_item['id'],
                     section_title=child_item['title'],
                     parent_section_id=child_item.get('parent_id'),
@@ -505,7 +468,7 @@ class DocumentManagementService:
         
         return children
     
-    def _format_toc_structure_as_string(self, document_id: str, toc_structure_data: List[Dict[str, Any]]) -> str:
+    def _format_toc_structure_as_string(self, document_id: str, toc_structure_data: List[TableOfContentsSection]) -> str:
         """
         Format TOC structure data as a readable string.
         
@@ -526,15 +489,15 @@ class DocumentManagementService:
         
         # Group by level and format
         level_1_items = [item for item in toc_structure_data 
-                         if item.get('level') == 1 and item.get('section_title') != "full_document"]
+                         if item.level == 1 and item.section_title != "full_document"]
          
         for index, item in enumerate(level_1_items):
             result.extend(self._format_structure_item_as_string(item, toc_structure_data, str(index + 1)))
         
         return "\n".join(result)
-    
-    def _format_structure_item_as_string(self, item: Dict[str, Any], 
-                                       all_structure_data: List[Dict[str, Any]], 
+
+    def _format_structure_item_as_string(self, item: TableOfContentsSection,
+                                       all_structure_data: List[TableOfContentsSection],
                                        section_index: str) -> List[str]:
         """
         Format a single TOC structure item as string lines.
@@ -548,16 +511,16 @@ class DocumentManagementService:
             List of formatted string lines
         """
         # Skip items without required fields
-        if 'section_title' not in item:
+        if not item.section_title:
             return []
 
-        page_info = f" (Page {item['page_number']})" if item.get('page_number') else ""
-        line = f"{section_index} {item['section_title']}{page_info}"
+        page_info = f" (Page {item.page_number})" if item.page_number else ""
+        line = f"{section_index} {item.section_title}{page_info}"
 
         result = [line]
         
         # Format children
-        children = item.get('children', [])
+        children = item.children
 
         for child_index, child_item in enumerate(children):
             result.extend(self._format_structure_item_as_string(
