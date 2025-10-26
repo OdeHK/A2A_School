@@ -259,7 +259,7 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error saving TOC structure data: {e}")
 
-    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[TableOfContentsSection]:
+    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[List[TableOfContentsSection]]:
         """
         Retrieve TOC structure data by document ID.
         
@@ -281,7 +281,7 @@ class DatabaseService:
 
             if result and "table_of_contents" in result:
                 toc_data = result["table_of_contents"]["sections"]
-                return TableOfContentsSection(**toc_data)
+                return [TableOfContentsSection(**section) for section in toc_data]
             return None
             
         except Exception as e:
