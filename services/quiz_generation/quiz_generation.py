@@ -1,11 +1,11 @@
-from typing import TypedDict, Dict, Any, List, Optional
+from typing import TypedDict, Dict, Any, List, Optional, Tuple
 from pydantic import Field
 from services.rag.rag_service import RagService
 from services.database_service import DatabaseService
-from services.models import PlanTaskOutput, PlanTaskOutputList, QuizQuestion, QuizQuestionOutput
+from services.models import PlanTaskOutputList, QuizQuestion, QuizQuestionOutput, TableOfContentsSection
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
-from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 import json
 import logging
 import regex as re
@@ -37,7 +37,7 @@ class CustomPydanticOutputParser(PydanticOutputParser):
 class QuizGenerationState(TypedDict):
     document_id: str
     username: str  
-    detail_table_of_contents: str
+    detail_table_of_contents: List[TableOfContentsSection]
     user_request: str
     section_tasks: PlanTaskOutputList  # Tasks cho map-reduce
     generated_questions: QuizQuestionOutput  # Kết quả từ từng Generate node
@@ -58,14 +58,14 @@ class QuizGenerationService:
                         document_id: str,
                         username: str,
                         user_request: str,
-                        toc_data: str) -> str:
+                        toc_data: List[TableOfContentsSection]) -> str:
         """
         Main entry point để sinh bộ đề MCQ
         Args:
             document_id: ID của tài liệu tham khảo
             username: Username for metadata filtering
             user_request: Yêu cầu của giáo viên
-            toc_data: Dữ liệu mục lục chi tiết của tài liệu
+            toc_data: Dữ liệu mục lục chi tiết của tài liệu dạng List[TableOfContentsSection]
         Returns:
             final_questions: Các câu hỏi được sinh ra ở dạng chuỗi
         """
@@ -104,8 +104,13 @@ class QuizGenerationService:
             logger.info(f"Document ID: {state['document_id']}")
             logger.info(f"User request: {state['user_request']}")
             
+            toc_data = state["detail_table_of_contents"]
             llm = self.rag_service.llm_service.llm
             
+            # Convert ToC sections to string for LLM processing
+            toc_string = QuizGenerationService._convert_toc_to_string(toc_data)
+            logger.info(f"Converted ToC to string format with {len(toc_data)} top-level sections")
+
             # Create Pydantic parser for structured output
             parser = PydanticOutputParser(pydantic_object=PlanTaskOutputList)
 
@@ -139,7 +144,7 @@ class QuizGenerationService:
                 # Create chain with parser
                 chain = plan_prompt | llm | parser
                 section_tasks = chain.invoke({
-                    "toc": state["detail_table_of_contents"],
+                    "toc": toc_string,
                     "request": state["user_request"],
                     "format_instructions": parser.get_format_instructions()
                 })
@@ -151,29 +156,12 @@ class QuizGenerationService:
                 
                 if not section_tasks.tasks:
                     logger.warning("Không có section tasks nào được tạo, sử dụng fallback")
-                    # Fallback với dummy data
-                    section_tasks = PlanTaskOutputList(tasks=[
-                        PlanTaskOutput(
-                            section_id="section_1",
-                            section_title="General Topics",
-                            number_of_questions=3,
-                            query_string="general concepts overview",
-                            question_requirements="Focus on key concepts"
-                        )
-                    ])
+                    section_tasks = PlanTaskOutputList(tasks=[])
                     
             except Exception as e:
                 logger.error(f"Error in plan_node: {e}")
-                section_tasks = PlanTaskOutputList(tasks=[
-                    PlanTaskOutput(
-                        section_id="section_1",
-                        section_title="General Topics",
-                        number_of_questions=3,
-                        query_string="general concepts overview",
-                        question_requirements="Focus on key concept"
-                    )
-                ])
-            
+                section_tasks = PlanTaskOutputList(tasks=[])
+
             logger.info("=== PLAN NODE END ===")
             return {**state, "section_tasks": section_tasks}
 
@@ -181,6 +169,7 @@ class QuizGenerationService:
             """Map generate with access to rag_service and metadata filtering"""
             logger.info("=== MAP GENERATE NODE START ===")
             section_tasks = state.get("section_tasks", PlanTaskOutputList(tasks=[]))
+            toc_data = state.get("detail_table_of_contents")
             document_id = state.get("document_id")
             username = state.get("username")
             
@@ -188,7 +177,6 @@ class QuizGenerationService:
             logger.info(f"Document ID: {document_id}, Username: {username}")
             
             generated_questions = QuizQuestionOutput(questions=[])
-            
             for i, task in enumerate(section_tasks.tasks):
                 logger.info(f"Đang xử lý section {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
                 logger.info(f"Section task details: {task}")
@@ -197,23 +185,20 @@ class QuizGenerationService:
                     # Check if vectorstore is available
                     if (self.rag_service.vector_service.vectorstore is None):
                         logger.warning("Vectorstore not initialized, using dummy questions")
-                        dummy_question = QuizQuestion(
-                            type="multiple_choice",
-                            title="Câu hỏi mẫu do chưa có dữ liệu",
-                            options=["Tùy chọn A", "Tùy chọn B", "Tùy chọn C", "Tùy chọn D"],
-                            answer="Tùy chọn A",
-                            answer_explanation="Đây là câu hỏi mẫu do vectorstore chưa được khởi tạo"
-                        )
-                        generated_questions.questions.append(dummy_question)
+                        raise Exception("Vectorstore not initialized")
 
                     else:
+                        # Get page range for the section to filter retrieved documents
+                        start_page, end_page = self._get_page_range_from_section(toc_data, task.section_title)
+
                         logger.info(f"Retrieving documents for query: {task.query_string}")
-                        
                         # Prepare metadata filter for document-specific and user-specific queries
                         metadata_filter = {
                             "$and": [
                                 {"document_id": document_id},
-                                {"username": username}
+                                {"username": username},
+                                {"page_number": {"$gte": start_page} if start_page is not None else {}},
+                                {"page_number": {"$lte": end_page} if end_page is not None else {}}
                             ]
                         }
                         logger.info(f"Applying metadata filter: {metadata_filter}")
@@ -226,7 +211,7 @@ class QuizGenerationService:
                         )
                         
                         logger.info(f"Retrieved {len(relevant_docs)} documents")
-                        logger.info(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
+                        logger.debug(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
 
                         # Create Pydantic parser for quiz questions
                         quiz_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
@@ -341,6 +326,78 @@ class QuizGenerationService:
 
         return str_output
     
+    @staticmethod
+    def _convert_toc_to_string(toc_sections: List[TableOfContentsSection], indent_level: int = 0) -> str:
+        """
+        Convert Table of Contents sections to a formatted string representation.
+        
+        Args:
+            toc_sections: List of TableOfContentsSection objects
+            indent_level: Current indentation level for hierarchical display
+            
+        Returns:
+            Formatted string representation of the table of contents
+        """
+        result = []
+        indent = "  " * indent_level
+        
+        for section in toc_sections:
+            # Format section with ID, title, and page number if available
+            page_info = f" (Page {section.page_number})" if section.page_number else ""
+            section_line = f"{indent}[{section.section_id}] {section.section_title}{page_info}"
+            result.append(section_line)
+            
+            # Recursively process children
+            if section.children:
+                child_str = QuizGenerationService._convert_toc_to_string(
+                    section.children, 
+                    indent_level + 1
+                )
+                result.append(child_str)
+        
+        return "\n".join(result)
+
     def _write_questions_to_database(self, username: str, questions: QuizQuestionOutput):
         """Write generated questions to database"""
         self.database_service.save_quizset(username=username, quizset=questions)
+    
+    def _get_page_range_from_section(
+        self, 
+        toc_sections: List[TableOfContentsSection], 
+        section_title: str
+    ) -> tuple[Optional[int], Optional[int]]:
+        """
+        Get page range for a given section by searching through the TOC structure.
+        
+        Args:
+            toc_sections: List of TableOfContentsSection objects to search through
+            section_title: Title of the section to find
+            
+        Returns:
+            Tuple of (start_page, end_page). Returns (None, None) if section not found
+            or if page information is not available.
+        """
+        def search_section(sections: List[TableOfContentsSection]) -> tuple[Optional[int], Optional[int]]:
+            """Recursively search for section by title"""
+            for section in sections:
+                # Check if this is the target section
+                if section.section_title == section_title:
+                    page_number = section.page_number
+                    end_page = section.end_page
+                    logger.info(f"Section '{section_title}' found: start_page={page_number}, end_page={end_page}")
+                    return (page_number, end_page)
+      
+                
+                # Search in children recursively
+                if section.children:
+                    result = search_section(section.children)
+                    if result != (None, None):
+                        return result
+            
+            return (None, None)
+        
+        # Perform the search
+        logger.info(f"Searching for section '{section_title}' in TOC")
+        start_page, end_page = search_section(toc_sections)
+        
+        return (start_page, end_page)
