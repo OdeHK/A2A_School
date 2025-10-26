@@ -2,17 +2,19 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from pymongo.collection import Collection
 from pymongo.database import Database
+from pymongo.server_api import ServerApi
 
+import logging
+import dns.resolver
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from services.models import (
         DocumentMetadata,
         QuizQuestionOutput
 )
-import dns.resolver
-from pymongo.server_api import ServerApi
-import logging
+
 from config.settings import get_settings
+from services.models import TableOfContents, TableOfContentsSection
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +259,7 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error saving TOC structure data: {e}")
 
-    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[List[Dict[str, Any]]]:
+    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[TableOfContentsSection]:
         """
         Retrieve TOC structure data by document ID.
         
@@ -279,7 +281,7 @@ class DatabaseService:
 
             if result and "table_of_contents" in result:
                 toc_data = result["table_of_contents"]["sections"]
-                return toc_data
+                return TableOfContentsSection(**toc_data)
             return None
             
         except Exception as e:
@@ -374,52 +376,7 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Error adding document to library: {e}")
 
-    def remove_document_from_library(self, username: str, name: str) -> bool:
-        """
-        Remove a document from the user's library.
-        
-        Args:
-            username: User identifier
-            name: Document name to remove
-            
-        Returns:
-            True if removed, False if not found
-        """
-        try:
-            # Get existing library
-            document_library = self.get_document_library(username)
-            
-            if name in document_library:
-                del document_library[name]
-                self.save_document_library(username, document_library)
-                logger.info(f"Removed document {name} from library for user {username}")
-                return True
 
-            logger.warning(f"Document {name} not found in library for user {username}")
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error removing document from library: {e}")
-            return False
-
-    def get_document_from_library(self, username: str, name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get specific document from user's library.
-        
-        Args:
-            username: User identifier
-            name: Document name
-            
-        Returns:
-            Document information or None if not found
-        """
-        try:
-            document_library = self.get_document_library(username)
-            return document_library.get(name)
-            
-        except Exception as e:
-            logger.error(f"Error getting document from library: {e}")
-            return None
 
     def list_user_documents(self, username: str) -> List[DocumentMetadata]:
         """
