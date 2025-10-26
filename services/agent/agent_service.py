@@ -297,9 +297,9 @@ class TeacherAgent:
                     return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
 
                 # Get table of contents
-                toc_string = self.document_management_service.get_table_of_contents_as_string(username=username, document_id=selected_document_id)
-                logger.debug(f"TOC string: {toc_string}")
-                if not toc_string:
+                toc_data = self.document_management_service.get_table_of_contents(username=username, document_id=selected_document_id)
+                logger.debug(f"TOC data: {toc_data}")
+                if not toc_data:
                     logger.warning(f"Không tìm thấy mục lục cho tài liệu: {selected_document_id}")
                     return {"answer": f"Không tìm thấy mục lục cho tài liệu: {selected_document_id}"}
 
@@ -308,7 +308,7 @@ class TeacherAgent:
                     document_id=selected_document_id,
                     username=username,
                     user_request=user_request,
-                    toc_data=toc_string
+                    toc_data=toc_data
                 )
                 logger.info(f"Quiz generation result: {result}")
 
