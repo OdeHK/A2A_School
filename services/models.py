@@ -78,6 +78,7 @@ class TableOfContentsSection(BaseModel):
     parent_section_id: Optional[str] = None
     level: int
     page_number: Optional[int] = None
+    end_page: Optional[int] = None
     children: List['TableOfContentsSection'] = []
 
     class Config:
@@ -91,6 +92,7 @@ class TableOfContentsSection(BaseModel):
             'parent_section_id': self.parent_section_id,
             'level': self.level,
             'page_number': self.page_number,
+            'end_page': self.end_page,
             'children': [child.to_dict() for child in self.children]
         }
 

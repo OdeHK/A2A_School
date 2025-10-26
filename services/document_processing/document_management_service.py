@@ -225,7 +225,7 @@ class DocumentManagementService:
         """
         return self.database_service.get_document_metadata(username=username, document_id=document_id)
 
-    def get_table_of_contents(self, username: str, document_id: str) -> Optional[TableOfContents]:
+    def get_table_of_contents(self, username: str, document_id: str) -> Optional[List[TableOfContentsSection]]:
         """
         Get table of contents for document (created from TOC structure data).
         
@@ -240,7 +240,7 @@ class DocumentManagementService:
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
-        return TableOfContents(**toc_structure_data)
+        return toc_structure_data
 
     def get_table_of_contents_as_string(self, username: str, document_id: str) -> Optional[str]:
         """
@@ -484,7 +484,6 @@ class DocumentManagementService:
         
         result = []
         result.append(f"Table of Contents for Document: {document_id}")
-        result.append(f"Extracted on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         result.append("-" * 50)
         
         # Group by level and format
