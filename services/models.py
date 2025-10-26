@@ -130,5 +130,3 @@ class ProcessingResult(BaseModel):
     error: Optional[str] = None
 
 
-# Enable forward references for TocSection
-TocSection.model_rebuild()
