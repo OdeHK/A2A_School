@@ -177,85 +177,110 @@ class QuizGenerationService:
             logger.info(f"Document ID: {document_id}, Username: {username}")
             
             generated_questions = QuizQuestionOutput(questions=[])
+            
+            # Check if vectorstore is available
+            if self.rag_service.vector_service.vectorstore is None:
+                logger.warning("Vectorstore not initialized, cannot generate questions")
+                logger.info("=== MAP GENERATE NODE END ===")
+                return {**state, "generated_questions": generated_questions}
+            
+            # Create Pydantic parser for quiz questions 
+            quiz_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
+            
+            # Create prompt template
+            quiz_generation_prompt = ChatPromptTemplate.from_messages([
+                ("system", "Reasoning: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
+                ("human", "Instructions\n"
+                          "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
+                          "Relevant content for this section is provided in the RETRIEVED_CONTEXT.\n\n"
+                          "Stick strictly to the RETRIEVED_CONTEXT. Do not introduce any new information or assumptions beyond what is provided.\n\n"
+                          "Question Requirements:\n"
+                          "{requirements}\n\n"
+                          "Response Formats:\n {format_instructions}\n"
+                          "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n"
+                          "Your response must be written in Vietnamese\n"
+                          "SECTION_CONTEXT:\n"
+                          "{section_context}\n"
+                          "RETRIEVED_CONTEXT:\n"
+                          "{context}\n\n")
+            ])
+            
+            # Step 1: Collect all prompt inputs for batch processing
+            batch_prompt_inputs = []
+            task_info_list = []  # Keep track of task information for logging
+            
             for i, task in enumerate(section_tasks.tasks):
-                logger.info(f"Đang xử lý section {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
+                logger.info(f"Preparing batch input {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
                 logger.info(f"Section task details: {task}")
-
+                
                 try:
-                    # Check if vectorstore is available
-                    if (self.rag_service.vector_service.vectorstore is None):
-                        logger.warning("Vectorstore not initialized, using dummy questions")
-                        raise Exception("Vectorstore not initialized")
-
-                    else:
-                        # Get page range for the section to filter retrieved documents
-                        start_page, end_page = self._get_page_range_from_section(toc_data, task.section_title)
-
-                        logger.info(f"Retrieving documents for query: {task.query_string}")
-                        # Prepare metadata filter for document-specific and user-specific queries
-                        metadata_filter = {
-                            "$and": [
-                                {"document_id": document_id},
-                                {"username": username},
-                                {"page_number": {"$gte": start_page} if start_page is not None else {}},
-                                {"page_number": {"$lte": end_page} if end_page is not None else {}}
-                            ]
-                        }
-                        logger.info(f"Applying metadata filter: {metadata_filter}")
+                    # Get page range for the section to filter retrieved documents
+                    start_page, end_page = self._get_page_range_from_section(toc_data, task.section_title)
+                    
+                    logger.info(f"Retrieving documents for query: {task.query_string}")
+                    # Prepare metadata filter for document-specific and user-specific queries
+                    metadata_filter = {
+                        "$and": [
+                            {"document_id": document_id},
+                            {"username": username},
+                            {"page_number": {"$gte": start_page} if start_page is not None else {}},
+                            {"page_number": {"$lte": end_page} if end_page is not None else {}}
+                        ]
+                    }
+                    logger.info(f"Applying metadata filter: {metadata_filter}")
+                    
+                    # Use retrieve_documents with metadata filtering
+                    relevant_docs = self.rag_service.retrieve_documents(
+                        query=task.query_string,
+                        top_k=5,
+                        filter=metadata_filter
+                    )
+                    
+                    logger.info(f"Retrieved {len(relevant_docs)} documents")
+                    logger.debug(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
+                    
+                    # Prepare prompt input for this task
+                    prompt_input = {
+                        "context": format_docs(relevant_docs),
+                        "num_questions": task.number_of_questions,
+                        "requirements": task.question_requirements,
+                        "section_title": task.section_title,
+                        "section_context": task.query_string,
+                        "format_instructions": quiz_parser.get_format_instructions()
+                    }
+                    
+                    batch_prompt_inputs.append(prompt_input)
+                    task_info_list.append(task)
+                    
+                except Exception as e:
+                    logger.error(f"Error preparing batch input for {task.section_title}: {e}")
+            
+            # Step 2: Batch invoke LLM if we have valid inputs
+            if batch_prompt_inputs:
+                try:
+                    logger.info(f"Batch invoking LLM with {len(batch_prompt_inputs)} prompts")
+                    
+                    # Create chain with parser
+                    chain = quiz_generation_prompt | self.rag_service.llm_service.llm | quiz_parser
+                    
+                    # Batch invoke
+                    batch_results = chain.batch(batch_prompt_inputs)
+                    
+                    logger.info(f"Batch invoke completed, processing {len(batch_results)} results")
+                    
+                    # Step 3: Process batch results
+                    for i, (quiz_result, task) in enumerate(zip(batch_results, task_info_list)):
+                        logger.info(f"Processing result {i+1}/{len(batch_results)} for section: {task.section_title}")
+                        logger.info(f"LLM output: {quiz_result}")
                         
-                        # Use retrieve_documents with metadata filtering
-                        relevant_docs = self.rag_service.retrieve_documents(
-                            query=task.query_string,
-                            top_k=5,
-                            filter=metadata_filter
-                        )
-                        
-                        logger.info(f"Retrieved {len(relevant_docs)} documents")
-                        logger.debug(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
-
-                        # Create Pydantic parser for quiz questions
-                        quiz_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
-                        
-                        quiz_generation_prompt = ChatPromptTemplate.from_messages([
-                            ("system", "Reasoning: Low. Act as a teacher responsible for assessing students' understanding. Your task is to generate exam questions based on the user's intent and the provided textbook content."),
-                            ("human", "Instructions\n"
-                                      "You are required to generate a quiz set with {num_questions} questions for the section titled '{section_title}' from the textbook. The SECTION_CONTEXT provides background information to help you understand the role and scope of this section within the overall curriculum.\n"
-                                      "Relevant content for this section is provided in the RETRIEVED_CONTEXT.\n\n"
-                                      "Stick strictly to the RETRIEVED_CONTEXT. Do not introduce any new information or assumptions beyond what is provided.\n\n"
-                                      "Question Requirements:\n"
-                                      "{requirements}\n\n"
-                                      "Response Formats:\n {format_instructions}\n"
-                                      "Math formatting: For inline mathematical expressions, enclose them in single dollar signs: $...$. For block equations, enclose them in double dollar signs: $$...$$\n"
-                                      "Your response must be written in Vietnamese\n"
-                                      "SECTION_CONTEXT:\n"
-                                      "{section_context}\n"
-                                      "RETRIEVED_CONTEXT:\n"
-                                      "{context}\n\n")
-                        ])
-                        
-                        logger.info(f"Generating {task.number_of_questions} questions using LLM")
-                        prompt_input = {
-                            "context": format_docs(relevant_docs),
-                            "num_questions": task.number_of_questions,
-                            "requirements": task.question_requirements,
-                            "section_title": task.section_title,
-                            "section_context": task.query_string,
-                            "format_instructions": quiz_parser.get_format_instructions()
-                        }
-                        prompt_result = quiz_generation_prompt.invoke(prompt_input)
-                        llm_result = self.rag_service.llm_service.llm.invoke(prompt_result)
-                        logger.info(f"LLM raw output before parsing: {llm_result.__repr__()}")  # In ra dữ liệu thô
-
-                        quiz_result = quiz_parser.invoke(llm_result)
-                        logger.info(f"LLM raw output: {quiz_result}")
-
                         generated_questions.questions.extend(quiz_result.questions)
                         logger.info(f"Đã generate thành công {len(quiz_result.questions)} câu hỏi cho section '{task.section_title}'")
                         
                 except Exception as e:
-                    logger.error(f"Error generating questions for {task.section_title}: {e}")
-                    
-                
+                    logger.error(f"Error during batch LLM invocation: {e}")
+            else:
+                logger.warning("No valid batch inputs prepared, skipping LLM invocation")
+            
             logger.info(f"MAP GENERATE hoàn thành: {len(generated_questions.questions)} câu hỏi")
             logger.info("=== MAP GENERATE NODE END ===")
             return {**state, "generated_questions": generated_questions}
