@@ -232,7 +232,7 @@ class QuizGenerationService:
                     # Use retrieve_documents with metadata filtering
                     relevant_docs = self.rag_service.retrieve_documents(
                         query=task.query_string,
-                        top_k=5,
+                        top_k=end_page - start_page + 1 if start_page is not None and end_page is not None else 5,
                         filter=metadata_filter
                     )
                     
