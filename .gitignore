@@ -3,6 +3,9 @@ vector_db/
 demo/
 temp_data/
 .gradio/
+unit_test/
+example_data/
+src/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -198,6 +201,10 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 /model
+
+# Hugging Face cache
+session_data/temp/huggingface_cache/
+model/models--*/
 
 # PyPI configuration file
 .pypirc

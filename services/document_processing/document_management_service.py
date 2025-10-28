@@ -152,6 +152,24 @@ class DocumentManagementService:
             metadata.page_count = len(docs_list)
             self.database_service.save_document_metadata(username=username, document_id=metadata.document_id, metadata=metadata)
             
+            # Add document to library
+            document_titles = []
+            if extract_toc and 'extraction_result' in locals():
+                try:
+                    # Extract titles from TOC structure - now it's nested format
+                    document_titles = self._extract_titles_from_toc_structure(extraction_result.toc_structure.sections)
+                    idx = document_titles.index("full_document")
+                    document_titles = document_titles[:idx+1]                    
+                except Exception as e:
+                    logger.warning(f"Could not extract titles for document library: {e}")
+            
+            self.database_service.add_document_to_library(
+                username=username,
+                document_id=document_id,
+                name=file_path_obj.stem,  # File name without extension
+                title=document_titles
+            )
+
             logger.info(f"Added document {file_path} to document library")
 
             # Create success result

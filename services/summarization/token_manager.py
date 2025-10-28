@@ -21,7 +21,7 @@ class TokenBudget:
     @property
     def target_utilization_ratio(self) -> float:
         """Target utilization ratio to maximize LLM performance"""
-        return 0.85  # Use 85% of available input tokens for optimal performance
+        return 0.85  
 
     @property
     def optimal_input_tokens(self) -> int:
@@ -57,38 +57,42 @@ class TokenManager:
         self.encoding = tiktoken.get_encoding(encoding_name)
         self.available_tokens = None
         
+        # Cache for token counts to avoid redundant calculations
+        self._token_cache: Dict[str, int] = {}
+        
         # Get token budget for the model
         if model_name in MODEL_TOKEN_BUDGETS:
             self.token_budget = MODEL_TOKEN_BUDGETS[model_name]
         else:
-            logger.warning(f"Unknown model {model_name}, using default gemini-2.5-flash-lite budget")
-            self.token_budget = MODEL_TOKEN_BUDGETS["gemini-2.5-flash-lite"]
+            logger.warning(f"Unknown model {model_name}, using default gpt-oss-20b budget")
+            self.token_budget = MODEL_TOKEN_BUDGETS["gpt-oss-20b"]
         
         logger.info(f"TokenManager initialized for {model_name}")
         logger.info(f"Available input tokens: {self.token_budget.available_input_tokens}")
         logger.info(f"Optimal input tokens: {self.token_budget.optimal_input_tokens}")
     
     def count_tokens(self, text: str) -> int:
-        """Count tokens in text using the model's tokenizer"""
-        if not text:
-            return 0
-        return len(self.encoding.encode(text))
-    
-    def estimate_vietnamese_tokens(self, text: str) -> int:
-        """
-        Estimate tokens for Vietnamese text with better accuracy
-        Vietnamese typically uses 1.5-2 tokens per word
-        """
+        """Count tokens in text using the model's tokenizer with caching."""
         if not text:
             return 0
         
-        # Basic token counting
-        base_tokens = self.count_tokens(text)
+        # 🚀 Check cache first
+        text_hash = hash(text)
+        cache_key = str(text_hash)
         
-        # Vietnamese adjustment factor
-        vietnamese_factor = 1.2  # Vietnamese often uses slightly more tokens
+        if cache_key in self._token_cache:
+            return self._token_cache[cache_key]
         
-        return int(base_tokens * vietnamese_factor)
+        # Calculate and cache
+        token_count = len(self.encoding.encode(text))
+        self._token_cache[cache_key] = token_count
+        
+        if len(self._token_cache) > 1000:
+            keys_to_remove = list(self._token_cache.keys())[:200]
+            for key in keys_to_remove:
+                del self._token_cache[key]
+        
+        return token_count
     
     def calculate_optimal_top_k(self, chunks: List[str], title: str = "", 
                                available_tokens: int = None) -> int:

@@ -488,53 +488,6 @@ class TeacherAgent:
 
         return self.memory.get_context_for_llm(document_id=document_id, task_type=task_type)
 
-    def get_memory_statistics(self) -> dict:
-        """
-        Get statistics about memory
-        
-        Returns:
-            Dictionary with statistics
-        """
-        if not self.enable_memory or not self.memory:
-            return {}
-        
-        return self.memory.get_statistics()
-    
-    def clear_memory(self) -> None:
-        """Clear all memory"""
-        if self.enable_memory and self.memory:
-            self.memory.clear()
-            logger.info("Memory cleared")
-    
-    def save_memory(self, filepath: str) -> None:
-        """
-        Save memory to file
-        
-        Args:
-            filepath: Path to save file
-        """
-        if not self.enable_memory or not self.memory:
-            logger.warning("Memory not enabled, cannot save")
-            return
-        
-        self.memory.save_to_file(filepath)
-        logger.info(f"Memory saved to {filepath}")
-    
-    def load_memory(self, filepath: str) -> None:
-        """
-        Load memory from file
-        
-        Args:
-            filepath: Path to load file
-        """
-        if not self.enable_memory or not self.memory:
-            logger.warning("Memory not enabled, cannot load")
-            return
-        
-        self.memory.load_from_file(filepath)
-        logger.info(f"Memory loaded from {filepath}")
-        
-
 
 # --- Logic quyết định rẽ nhánh ---
 def decide_route(state: ParentGraphState):

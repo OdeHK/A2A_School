@@ -94,6 +94,7 @@ class SummarizationService:
                 content_data = self.document_management_service.get_content_data(
                     username=username, document_id=document_id
                 )
+                logger.info(f"✅ Retrieved content_data for user={username}, document_id={document_id}")
                 if not content_data:
                     logger.error(f"❌ No content_data returned for user={username}, document_id={document_id}")
                     return {"error": "No content found for the given document."}
