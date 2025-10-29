@@ -97,26 +97,38 @@ class TOCExtractor:
         logger.info(f"  - Embedding Model: {embedding_model}")
         logger.info(f"  - Mode: Separate TOC + Content files with ID mapping")
     
-    def extract_toc_and_content(self, pdf_path: str, document_id: str) -> TOCExtractionResult:
+    def extract_toc_and_content(self, pdf_path: str, document_id: str, document_content: Optional[str] = None) -> TOCExtractionResult:
         """
         Main method to extract both TOC structure and content.
         
         Args:
-            pdf_path: Path to PDF file
-            document_id: Optional document ID (auto-generated if not provided)
+            pdf_path: Path to PDF file or URL
+            document_id: Document ID
+            document_content: Optional pre-loaded content (for websites)
             
         Returns:
             TOCExtractionResult containing both structure and content
         """
         logger.info(f"Starting TOC extraction for: {pdf_path}")
         
-        # Validate PDF file
-        if not Path(pdf_path).exists():
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        # Check if it's a URL (website) or local PDF file
+        is_url = pdf_path.startswith("http://") or pdf_path.startswith("https://")
         
-        # STEP 1: Extract TOC structure using TOCGenerator
-        toc_generator = self._create_toc_generator(pdf_path)
-        bookmark_tree = toc_generator.generate_toc()
+        if is_url:
+            # For websites: Create simple full_document TOC
+            logger.info(f"Processing website URL: {pdf_path}")
+            return self._extract_toc_for_website(pdf_path, document_id, document_content)
+        else:
+            # For PDF files: Use full TOC extraction
+            logger.info(f"Processing PDF file: {pdf_path}")
+            
+            # Validate PDF file
+            if not Path(pdf_path).exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+            
+            # STEP 1: Extract TOC structure using TOCGenerator
+            toc_generator = self._create_toc_generator(pdf_path)
+            bookmark_tree = toc_generator.generate_toc()
 
         #logger.info(f"Extracted: bookmark_tree {bookmark_tree}")
         

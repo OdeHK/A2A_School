@@ -14,11 +14,23 @@ logger = logging.getLogger(__name__)
 ui_service = UIIntegrationService()
 
 # Function to process uploaded document and add new URL
-def process_uploaded_document(file_path: str, session_state: dict):
-    """Process the selected document through RAG pipeline"""
+def process_uploaded_document(file_path: str, session_state: dict, loader_version: str, source_type: str = "Upload"):
+    """Process the selected document through RAG pipeline.
+
+    Now accepts an explicit `source_type` selected by the user ("Upload" or "Link").
+    """
     try:
         user_name = session_state.get("user_name", "default_user")
-        status_msg = ui_service.process_uploaded_document(file_path, user_name)
+
+        # Normalize source_type and file_path for the service
+        normalized_source = file_path
+        normalized_type = source_type.lower() if source_type else "upload"
+        status_msg = ui_service.process_uploaded_document(
+            normalized_source,
+            user_name,
+            source_type=normalized_type,
+            loader_version=loader_version
+        )
         logger.info(f"Document processing status: {status_msg}")
         return status_msg
     except Exception as e:
@@ -94,15 +106,15 @@ def handle_document_selection(selected_items: List[str], session_state: dict):
 
 
 # Function to handle loader and chunker dropdown changes
-def on_loader_change(loader_value):
-    """Handle loader dropdown change"""
+def on_loader_version_change(loader_version):
+    """Handle loader version radio button change"""
     try:
-        status_msg = ui_service.update_loader_strategy(loader_value)
-        logger.info(f"Loader change status: {status_msg}")
-        return loader_value
+        status_msg = ui_service.update_loader_version(loader_version)
+        logger.info(f"Loader version change status: {status_msg}")
+        return status_msg
     except Exception as e:
-        logger.error(f"Error in on_loader_change: {str(e)}")
-        return loader_value
+        logger.error(f"Error in on_loader_version_change: {str(e)}")
+        return f"❌ Error: {str(e)}"
 
 def on_chunker_change(chunker_value):
     """Handle chunker dropdown change"""
@@ -212,18 +224,25 @@ def create_greeting_message(session_state):
     user_name = session_state.get("user_name", "Người dùng")
     gr.Info(message=f"Xin chào, {user_name}!", duration=5, title="Chào mừng")
 
+def toggle_source_input(source_type):
+    """Toggle visibility of upload button and URL input based on source type."""
+    if source_type == "Upload":
+        return gr.update(visible=True), gr.update(visible=False)  
+    else:  # Link
+        return gr.update(visible=False), gr.update(visible=True)
+
 # Gradio UI setup
 with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     session_state = gr.State()
-    with gr.Sidebar(open=False):
-        side_bar_title = gr.Markdown(value="**Developer Setting**")
+    with gr.Accordion(label="⚙️ Developer Setting", open=False):
 
-        # Chọn phương thức loader
-        loader_dropdown = gr.Dropdown(label="Loader",
-                                        choices=['Base', 'OCR', 'Base+OCR'],
-                                        value='Base',  
-                                        multiselect=False,
-                                        interactive=True)  
+        # Chọn version cho document loader
+        loader_version_radio = gr.Radio(
+            label="Chọn tính năng xử lý tài liệu",
+            choices=['Version 1', 'Version 2'],
+            value='Version 1',
+        )
+        
         chunker_dropdown = gr.Dropdown(label="Chunker",
                                         choices=['ONE_PAGE', 'RECURSIVE_CHARACTER_TEXT_SPLITTER', 'LLM_SPLITTER'],
                                         value='ONE_PAGE', 
@@ -253,9 +272,25 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
                 lines=3
             )
             
-            url_input = gr.Textbox(label="Nhập đường dẫn Google Drive", submit_btn=True)
+            # Let the user explicitly choose whether they are using an upload or a link
+            source_type_radio = gr.Radio(
+                label="Chọn loại nguồn",
+                choices=['Upload', 'Link'],
+                value='Upload',
+                info="Chọn Upload để tải file hoặc Link để nhập URL"
+            )
+            
+            # Upload button (visible by default)
             file_upload_btn = gr.UploadButton(
-                label="Upload a File"
+                label="📤 Upload a File",
+                visible=True
+            )
+            
+            # URL input (hidden by default)
+            url_input = gr.Textbox(
+                label="🔗 Nhập đường dẫn (URL)", 
+                submit_btn=True,
+                visible=False
             )
         
         with gr.Column(scale=2):
@@ -297,12 +332,30 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[file_list_checkbox]
     )
 
+    # Toggle visibility when source type changes
+    source_type_radio.change(
+        fn=toggle_source_input,
+        inputs=[source_type_radio],
+        outputs=[file_upload_btn, url_input]
+    )
+
     # Process file upload
     file_upload_btn.upload(
         fn=process_uploaded_document,
-        inputs=[file_upload_btn, session_state],
+        inputs=[file_upload_btn, session_state, loader_version_radio, source_type_radio],
         outputs=[status_display]
     ).success(
+        fn=update_file_list_choices,
+        inputs=[session_state],
+        outputs=[file_list_checkbox]
+    )
+
+    # Process URL submission from the textbox when user presses Enter
+    url_input.submit(
+        fn=process_uploaded_document,
+        inputs=[url_input, session_state, loader_version_radio, source_type_radio],
+        outputs=[status_display]
+    ).then(
         fn=update_file_list_choices,
         inputs=[session_state],
         outputs=[file_list_checkbox]
@@ -347,13 +400,14 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
         outputs=[google_auth_btn]
     )
 
-    # Thêm event handlers cho dropdowns
-    loader_dropdown.change(
-        fn=on_loader_change,
-        inputs=loader_dropdown,
-        outputs=[]
+    # Loader version change handler
+    loader_version_radio.change(
+        fn=on_loader_version_change,
+        inputs=loader_version_radio,
+        outputs=[status_display]
     )
 
+    # Thêm event handlers cho dropdowns
     chunker_dropdown.change(
         fn=on_chunker_change,
         inputs=chunker_dropdown,

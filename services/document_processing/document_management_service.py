@@ -11,6 +11,7 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Optional, List, Dict, Any
 from services.models import (
     DocumentMetadata, 
@@ -66,7 +67,8 @@ class DocumentManagementService:
         file_path: str,
         username: str,
         rag_service: Optional["RagService"] = None,
-        extract_toc: bool = True
+        extract_toc: bool = True,
+        loader_config: Optional[Dict[str, Any]] = None
     ) -> ProcessingResult:
         """
         Process an uploaded document through the complete pipeline.
@@ -76,6 +78,7 @@ class DocumentManagementService:
             username: User identifier for document ownership
             rag_service: Optional RAG service for vector storage
             extract_toc: Whether to extract table of contents
+            loader_config: Optional loader configuration dictionary
             
         Returns:
             ProcessingResult with status and metadata
@@ -86,22 +89,61 @@ class DocumentManagementService:
         try:
             logger.info(f"Starting document processing for: {file_path}")
             
+            # Create loader with specific config if provided
+            if loader_config:
+                logger.info(f"Using custom loader config: {loader_config}")
+                from services.document_processing.document_loader import (
+                    DocumentLoader, DocumentType, LoadingStrategyFactory
+                )
+                
+                # Determine document type from file path
+                if file_path.startswith("http"):
+                    document_type = DocumentType.HTML
+                else:
+                    document_type = DocumentType.PDF
+                
+                # Create strategy with config
+                strategy = LoadingStrategyFactory.create_strategy(document_type, loader_config)
+                temp_loader = DocumentLoader(strategy=strategy)
+            else:
+                temp_loader = self.loader
+            
             # Create initial metadata
-            file_path_obj = Path(file_path)
-            metadata = DocumentMetadata(
-                document_id=document_id,
-                file_name=file_path_obj.name,
-                file_path=str(file_path_obj),
-                file_size=file_path_obj.stat().st_size,
-                upload_date=datetime.now(),
-                processing_status=ProcessingStatus.PROCESSING
-            )
+            if file_path.startswith("http"):
+                parsed_url = urlparse(file_path)
+                file_name = parsed_url.path.split("/")[-1] or parsed_url.netloc
+                # Extract name without extension for library
+                doc_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
+                
+                metadata = DocumentMetadata(
+                    document_id=document_id,
+                    file_name=file_name,
+                    file_path=file_path,  
+                    file_size=0,
+                    upload_date=datetime.now(),
+                    processing_status=ProcessingStatus.PROCESSING
+                )
+                source_for_loader = file_path  # Use original URL string
+            else:
+                file_path_obj = Path(file_path)
+                doc_name = file_path_obj.stem
+                file_name = file_path_obj.name
+                
+                metadata = DocumentMetadata(
+                    document_id=document_id,
+                    file_name=file_name,
+                    file_path=str(file_path_obj),
+                    file_size=file_path_obj.stat().st_size,
+                    upload_date=datetime.now(),
+                    processing_status=ProcessingStatus.PROCESSING
+                )
+                source_for_loader = str(file_path_obj)
 
             self.database_service.save_document_metadata(username=username, document_id=document_id, metadata=metadata)
 
             # Load documents
-            logger.info("Loading document pages...")
-            docs = self.loader.lazy_load(str(file_path_obj))
+            logger.info(f"Loading document pages from: {source_for_loader}")
+            docs = temp_loader.lazy_load(source_for_loader)
             docs_list = list(docs)
             if not docs_list:
                 raise ValueError("No documents were loaded from the file")
@@ -110,9 +152,17 @@ class DocumentManagementService:
             # Extract table of contents if requested
             if extract_toc:
                 logger.info("Extracting table of contents...")
+                
+                # For websites, pass the document content
+                website_content = None
+                if file_path.startswith("http"):
+                    # Combine all document content for website
+                    website_content = "\n\n".join([doc.page_content for doc in docs_list])
+                
                 extraction_result = self.toc_extractor.extract_toc_and_content(
-                    str(file_path),
-                    document_id=document_id
+                    source_for_loader,
+                    document_id=document_id,
+                    document_content=website_content
                 )
                 
                 # Save TOC structure data và content data vào session
@@ -166,7 +216,7 @@ class DocumentManagementService:
             self.database_service.add_document_to_library(
                 username=username,
                 document_id=document_id,
-                name=file_path_obj.stem,  # File name without extension
+                name=doc_name,
                 title=document_titles
             )
 
@@ -176,8 +226,8 @@ class DocumentManagementService:
             result = ProcessingResult(
                 status=ProcessingStatus.COMPLETED,
                 document_id=document_id,
-                file_name=file_path_obj.name,
-                message=f"Successfully processed {file_path_obj.name}",
+                file_name=file_name,
+                message=f"Successfully processed {file_name}",
                 metadata=metadata,
                 table_of_contents=None  
             )
