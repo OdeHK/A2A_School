@@ -182,7 +182,6 @@ class TeacherAgent:
                         task_type="summary"
                     )
 
-<<<<<<< HEAD
                 return {"answer": summary}
                 
             except Exception as e:
@@ -196,53 +195,6 @@ class TeacherAgent:
                     )
                 
                 return {"answer": error_msg}
-=======
-            # Check which section to summarize
-            document_library = self.document_management_service.get_document_library(username=username, document_id=selected_document_id)
-            logger.debug(f"Document library: {document_library}")
-            
-            llm = self.llm_service.get_llm()
-            find_document_chain = find_document_node_prompt | llm | JsonOutputParser()
-            library_str = json.dumps(document_library, indent=2)
-            matched_document = find_document_chain.invoke({
-                "library_str": library_str,
-                "user_request": state["user_request"]
-            })
-            logger.info(f"Matched document: {matched_document}")
-            if matched_document is None:
-                logger.warning("Không tìm thấy tài liệu phù hợp trong thư viện.")
-                return {"answer": "Không tìm thấy nội dung bạn đề cập."}
-
-
-            # Get content data which contains the actual content
-            content_data = self.document_management_service.get_content_data(username=username, document_id=selected_document_id)["content"]
-            logger.debug(f"Content data: {content_data}")
-            
-            if not content_data:
-                logger.warning(f"No content data found for document: {selected_document_id}")
-                return { "answer": "Không tìm thấy nội dung để tóm tắt."}
-            
-            # Find content by title
-            title = matched_document["title"][0]
-            extracted_content = None
-            for content_item in content_data:
-                if content_item.get("title") == title:
-                    extracted_content = content_item.get("content")
-                    break
-            
-            if not extracted_content:
-                logger.warning(f"No content found for title: {title}")
-                no_content_msg = f"Không tìm thấy nội dung cho '{title}'."
-                return {"answer": no_content_msg}
-            
-            logger.info(f"Found content length: {len(extracted_content)} characters")
-            
-            llm = self.llm_service.get_llm()
-            chain = summarize_content_node_prompt | llm
-            summary = chain.invoke({"input_text": extracted_content})
-            logger.info(f"Summary generated: {summary}")
-            return {"answer": summary.content}
->>>>>>> 6ed95e4 (fix: Change logging level to debug for document library and content data in TeacherAgent)
 
         def rag_qa_node(state: ParentGraphState):
             """Trả lời câu hỏi dựa trên tài liệu (RAG) với metadata filtering."""
