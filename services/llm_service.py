@@ -72,7 +72,7 @@ def get_nvidia_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS
         nvidia_api_key=api_key,
         temperature=0.8,
         top_p=0.95,
-        streaming=True,
+        streaming=False,
         callbacks=[StreamingStdOutCallbackHandler()],
         max_completion_tokens=100000
     )
