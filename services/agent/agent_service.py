@@ -9,7 +9,7 @@ from httplib2 import Http
 from oauth2client import client, file, tools
 from langgraph.graph import StateGraph, END
 
-from services.summarization.prompt import router_prompt
+from prompts.agent import router_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
