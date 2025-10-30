@@ -1,8 +1,8 @@
 # Temporary folders
-session_data/
 vector_db/
 demo/
 temp_data/
+.gradio/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -140,6 +140,7 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 src/lecture9.pdf
+
 # Environments
 .env
 .envrc
@@ -192,7 +193,7 @@ cython_debug/
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
 
 # Ruff stuff:
 .ruff_cache/

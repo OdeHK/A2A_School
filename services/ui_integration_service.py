@@ -1,4 +1,5 @@
 import logging
+import shutil
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from apiclient import discovery
@@ -13,6 +14,7 @@ from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
 from services.agent.agent_service import TeacherAgent
+from config.constants import StorageConstants
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +26,19 @@ class UIIntegrationService:
     
     def __init__(self):
         """Initialize the UI integration service."""
-        self.rag_service: Optional[RagService] = None
-        self.doc_management_service: Optional[DocumentManagementService] = None
-        self.quiz_generation_service: Optional[QuizGenerationService] = None
-        self.summarization_service: Optional[SummarizationService] = None
-        self.agent_service: Optional[TeacherAgent] = None
-        self.processing_status: Dict[str, Any] = {}
-        
         # Initialize services in correct order
-        self._initialize_rag_service()
-        self._initialize_database_service()
-        self._initialize_document_management_service()
-        self._initialize_quiz_generation_service()
-        self._initialize_summarization_service()
-        self._initialize_agent_service()
+        self.rag_service = self._initialize_rag_service()
+        self.database_service = self._initialize_database_service()
+        self.doc_management_service = self._initialize_document_management_service(database_service=self.database_service)
+        self.quiz_generation_service = self._initialize_quiz_generation_service(rag_service=self.rag_service, database_service=self.database_service)
+        self.summarization_service = self._initialize_summarization_service(rag_service=self.rag_service, document_management_service=self.doc_management_service)
+        self.agent_service = self._initialize_agent_service(rag_service=self.rag_service, 
+                                                          quiz_generation_service=self.quiz_generation_service,
+                                                          document_management_service=self.doc_management_service,
+                                                          summarization_service=self.summarization_service,
+                                                          database_service=self.database_service)
 
-    def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> None:
+    def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> RagService:
         """
         Initialize or reinitialize the RAG service with specified configuration.
         
@@ -56,113 +55,83 @@ class UIIntegrationService:
             
             strategy = strategy_mapping.get(chunker_strategy, ChunkingStrategyType.ONE_PAGE_PER_CHUNK)
             
-            self.rag_service = RagService()
-            self.rag_service.update_chunking_strategy(strategy)
+            rag_service = RagService()
+            rag_service.update_chunking_strategy(strategy)
             
             logger.info(f"RAG service initialized with strategy: {chunker_strategy}")
-            
+            return rag_service
         except Exception as e:
             logger.error(f"Error initializing RAG service: {str(e)}")
-            # Initialize with default settings as fallback
-            self.rag_service = RagService()
+            raise e
             
-    def _initialize_database_service(self):
+    def _initialize_database_service(self) -> DatabaseService:
         """
         Initialize or reinitialize the database service.
         """
         try:
             self.database_service = DatabaseService()
             logger.info("Database service initialized")
+            return self.database_service
         except Exception as e:
-            self.database_service = None
             logger.error(f"Error initializing database service: {str(e)}")
             raise e 
 
-    def _initialize_document_management_service(self):
+    def _initialize_document_management_service(self, database_service: DatabaseService) -> DocumentManagementService:
         """
         Initialize or reinitialize the document management service.
         """
         try:
             # TODO: Modify DocumentManagementService to accept loader and chunker strategies
-            if not self.database_service:
-                self._initialize_database_service()
-            self.doc_management_service = DocumentManagementService(database_service=self.database_service)
+            doc_management_service = DocumentManagementService(database_service=database_service)
             logger.info("Document management service initialized")
+            return doc_management_service
         except Exception as e:
-            self.doc_management_service = None
-            logger.error(f"Error initializing document management service: {str(e)}") 
 
-    def _initialize_quiz_generation_service(self):
+            logger.error(f"Error initializing document management service: {str(e)}") 
+            raise e
+
+    def _initialize_quiz_generation_service(self, rag_service: RagService, database_service: DatabaseService):
         """
         Initialize or reinitialize the quiz generation service.
         """
         try:
-            # Ensure RAG service is initialized first
-            if not self.rag_service:
-                self._initialize_rag_service()
-            
-            # Check again after initialization
-            if self.rag_service:
-                self.quiz_generation_service = QuizGenerationService(rag_service=self.rag_service)
-                logger.info("Quiz generation service initialized")
-            else:
-                logger.error("Failed to initialize RAG service, quiz generation service cannot be initialized")
-                self.quiz_generation_service = None
+            quiz_generation_service = QuizGenerationService(rag_service=rag_service, database_service=database_service)
+            logger.info("Quiz generation service initialized")
+            return quiz_generation_service
         except Exception as e:
             logger.error(f"Error initializing quiz generation service: {str(e)}")
-            self.quiz_generation_service = None
-
-    def _initialize_summarization_service(self):
+            raise e
+        
+    def _initialize_summarization_service(self, rag_service: RagService, document_management_service: DocumentManagementService) -> SummarizationService:
         """
         Initialize or reinitialize the summarization service.
         """
         try:
-            # Ensure RAG service and document management service are initialized first
-            if not self.rag_service:
-                self._initialize_rag_service()
-            
-            if not self.doc_management_service:
-                self._initialize_document_management_service()
-            
-            # Check again after initialization
-            if self.rag_service and self.doc_management_service:
-                self.summarization_service = SummarizationService(
-                    rag_service=self.rag_service,
-                    document_management_service=self.doc_management_service
-                )
-                logger.info("Summarization service initialized")
-            else:
-                logger.error("Failed to initialize required services, summarization service cannot be initialized")
-                self.summarization_service = None
+            summarization_service = SummarizationService(rag_service=rag_service, document_management_service=document_management_service)
+            logger.info("Summarization service initialized")
+            return summarization_service
         except Exception as e:
             logger.error(f"Error initializing summarization service: {str(e)}")
-            self.summarization_service = None
+            raise e
 
-    def _initialize_agent_service(self):
+    def _initialize_agent_service(self, rag_service: RagService, quiz_generation_service: QuizGenerationService, document_management_service: DocumentManagementService, summarization_service: SummarizationService, database_service: DatabaseService) -> TeacherAgent:
         """
         Initialize the agent service with all required services.
         """
         try:
-            # Ensure all required services are available
-            if (self.rag_service and 
-                self.quiz_generation_service and 
-                self.summarization_service and 
-                self.doc_management_service):
-                self.agent_service = TeacherAgent(
-                    rag_service=self.rag_service,
-                    quiz_generation_service=self.quiz_generation_service,
-                    summarization_service=self.summarization_service,
-                    document_management_service=self.doc_management_service,
-                    llm_service=self.rag_service.llm_service,
-                    enable_memory=True
-                )
-                logger.info("Agent service initialized successfully")
-            else:
-                logger.warning("Cannot initialize agent service: Required services not available")
-                self.agent_service = None
+            agent_service = TeacherAgent(
+                rag_service=rag_service,
+                quiz_generation_service=quiz_generation_service,
+                document_management_service=document_management_service,
+                summarization_service=self.summarization_service,
+                llm_service=self.rag_service.llm_service,
+                database_service=database_service
+            )
+            logger.info("Agent service initialized successfully")
+            return agent_service
         except Exception as e:
             logger.error(f"Error initializing agent service: {str(e)}")
-            self.agent_service = None
+            raise e
 
     def process_uploaded_document(self, uploaded_file_path: str, username: str): 
         """Handle file upload from Gradio interface using DocumentManagementService."""
@@ -210,16 +179,7 @@ class UIIntegrationService:
         """
         try:
             # Reinitialize RAG service with new strategy
-            self._initialize_rag_service(strategy)
-            
-            # Reinitialize quiz generation service
-            self._initialize_quiz_generation_service()
-            
-            # Reinitialize summarization service
-            self._initialize_summarization_service()
-            
-            # Reinitialize agent service
-            self._initialize_agent_service()
+            self.rag_service = self._initialize_rag_service(strategy)
             
             return f"✅ Chunking strategy updated to: {strategy}"
         except Exception as e:
@@ -261,15 +221,6 @@ class UIIntegrationService:
         try:
             if not query or not query.strip():
                 return "🤖 Vui lòng nhập câu hỏi."
-            
-            # Check if agent service is ready
-            if not self.agent_service:
-                # Try to initialize if not ready
-                self._initialize_agent_service()
-                
-                if not self.agent_service:
-                    error_response = "🤖 Dịch vụ AI chưa sẵn sàng. Vui lòng thử lại sau."
-                    return error_response
             
             # Use agent service to handle the chat
             response = self.agent_service.handle_chat_query(query=query, username=username, selected_document_id=selected_document_id, chat_history=chat_history)
@@ -353,7 +304,7 @@ class UIIntegrationService:
             return f"Có lỗi xảy ra khi đăng nhập vào tài khoản Google. Bạn hãy thử lại nhé!"
 
     # Sign in to Google account 
-    def open_sign_in_website(self) -> Tuple[bool, str]:
+    def open_sign_in_website(self, username: str) -> Tuple[bool, str]:
         """
         Open the Google sign-in website for authentication.
         
@@ -362,19 +313,24 @@ class UIIntegrationService:
             str: the Google account name if sign-in is successful,
         """
         try:
-            temp_folder = Path("session_data/temp")
+            temp_folder = Path(StorageConstants.TEMP_DATA_DIR)
+            user_temp_folder = Path(StorageConstants.get_user_session_dir(username))
+
+            if not user_temp_folder.exists():
+                user_temp_folder.mkdir(parents=True, exist_ok=True)
+
             SCOPES = [
                 "https://www.googleapis.com/auth/forms.body",
                 "https://www.googleapis.com/auth/userinfo.profile"
             ]
-            store = file.Storage(temp_folder / "token.json")
+            store = file.Storage(Path(StorageConstants.get_user_token_path(username)))
             try:
                 creds = store.get()
             except Exception:
                 creds = None
 
             if not creds or creds.invalid:
-                flow = client.flow_from_clientsecrets(temp_folder / "client_secret_vscode.json", SCOPES)
+                flow = client.flow_from_clientsecrets(Path(StorageConstants.CLIENT_SECRET_FILE), SCOPES)
                 creds = tools.run_flow(flow, store)
             
             # Lấy thông tin người dùng từ Google
@@ -498,17 +454,50 @@ class UIIntegrationService:
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
             "summarization_service_initialized": self.summarization_service is not None,
             "agent_service_initialized": self.agent_service is not None,
-            "documents_processed": len(self.processing_status)
             #"agent_service_status": self.agent_service.get_service_status() if self.agent_service else {},
         }
+    def delete_temp_folder_for_user(self, username: str):
+        """
+        Delete the temporary folder for a specific user.
+        
+        Args:
+            username: The username whose temp folder should be deleted
+        """
+        try:
+            user_temp_folder = Path(StorageConstants.get_user_session_dir(username))
+            if user_temp_folder.exists():
+                shutil.rmtree(user_temp_folder)
+                logger.info(f"Deleted temporary folder for user: {username}")
+            else:
+                logger.info(f"No temporary folder found for user: {username}")
+        except Exception as e:
+            logger.error(f"Error deleting temporary folder for user {username}: {str(e)}")
+
+    def delete_temp_folder_for_all_users(self):
+        """
+        Delete the temporary folder for all users.
+        """
+        try:
+            session_temp_dir = Path(StorageConstants.SESSION_TEMP_DIR)
+            if session_temp_dir.exists():
+                shutil.rmtree(session_temp_dir)
+                logger.info("Deleted temporary folders for all users.")
+            else:
+                logger.info("No session temporary directory found.")
+        except Exception as e:
+            logger.error(f"Error deleting temporary folders for all users: {str(e)}")
+
+            
     def cleanup(self):
         """
         Cleanup all initialized service objects to release resources.
         """
+        self.delete_temp_folder_for_all_users()
+        self.database_service.remove_quizsets()
+        self.database_service.close_connection()
         del self.rag_service
         del self.doc_management_service
         del self.quiz_generation_service
         del self.agent_service
         del self.database_service
-        del self.processing_status
         logger.info("UIIntegrationService resources have been cleaned up.")

@@ -7,7 +7,7 @@ from services.document_processing.document_management_service import DocumentMan
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
 from langchain_core.output_parsers import JsonOutputParser
-from services.summarization.prompt import find_titles_prompt, summarize_content_prompt
+from prompts.summarization import find_titles_prompt, summarize_content_prompt
 import random
 logger = logging.getLogger(__name__)
 

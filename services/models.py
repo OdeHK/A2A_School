@@ -66,50 +66,55 @@ class DocumentMetadata(BaseModel):
         }
 
 
-class TocSection(BaseModel):
-    """Table of Contents section model"""
+# =============================
+# Table of Contents Models
+# =============================
+
+class TableOfContentsSection(BaseModel):
+    """A model representing a section in the Table of Contents"""
+
     section_id: str
     section_title: str
     parent_section_id: Optional[str] = None
     level: int
     page_number: Optional[int] = None
-    children: List['TocSection'] = []
-    
+    end_page: Optional[int] = None
+    children: List['TableOfContentsSection'] = []
+
     class Config:
         # Enable forward references for recursive model
         validate_assignment = True
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'section_id': self.section_id,
+            'section_title': self.section_title,
+            'parent_section_id': self.parent_section_id,
+            'level': self.level,
+            'page_number': self.page_number,
+            'end_page': self.end_page,
+            'children': [child.to_dict() for child in self.children]
+        }
 
 class TableOfContents(BaseModel):
-    """Complete Table of Contents model"""
+    """A model representing the Table of Contents of a document"""
+    
     document_id: str
-    extraction_method: str  # "library" or "llm"
     extraction_date: datetime
-    sections: List[TocSection]
-    raw_text: Optional[str] = None  # Original extracted text
-    
+    sections: List[TableOfContentsSection]
+
     class Config:
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
-
-
-# =============================
-# Session Management Models
-# =============================
-
-class SessionMetadata(BaseModel):
-    """Session metadata model"""
-    session_id: str
-    created_date: datetime
-    last_accessed: datetime
-    documents: List[str] = []  # List of document IDs
-    vector_store_path: Optional[str] = None
     
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'document_id': self.document_id,
+            'extraction_date': self.extraction_date,
+            'sections': [section.to_dict() for section in self.sections]
         }
+
 
 
 # =============================
@@ -127,5 +132,3 @@ class ProcessingResult(BaseModel):
     error: Optional[str] = None
 
 
-# Enable forward references for TocSection
-TocSection.model_rebuild()
