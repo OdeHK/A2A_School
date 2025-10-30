@@ -31,9 +31,11 @@ class UIIntegrationService:
         self.database_service = self._initialize_database_service()
         self.doc_management_service = self._initialize_document_management_service(database_service=self.database_service)
         self.quiz_generation_service = self._initialize_quiz_generation_service(rag_service=self.rag_service, database_service=self.database_service)
+        self.summarization_service = self._initialize_summarization_service(rag_service=self.rag_service, document_management_service=self.doc_management_service)
         self.agent_service = self._initialize_agent_service(rag_service=self.rag_service, 
                                                           quiz_generation_service=self.quiz_generation_service,
                                                           document_management_service=self.doc_management_service,
+                                                          summarization_service=self.summarization_service,
                                                           database_service=self.database_service)
 
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> RagService:
@@ -99,8 +101,20 @@ class UIIntegrationService:
         except Exception as e:
             logger.error(f"Error initializing quiz generation service: {str(e)}")
             raise e
+        
+    def _initialize_summarization_service(self, rag_service: RagService, document_management_service: DocumentManagementService) -> SummarizationService:
+        """
+        Initialize or reinitialize the summarization service.
+        """
+        try:
+            summarization_service = SummarizationService(rag_service=rag_service, document_management_service=document_management_service)
+            logger.info("Summarization service initialized")
+            return summarization_service
+        except Exception as e:
+            logger.error(f"Error initializing summarization service: {str(e)}")
+            raise e
 
-    def _initialize_agent_service(self, rag_service: RagService, quiz_generation_service: QuizGenerationService, document_management_service: DocumentManagementService, database_service: DatabaseService) -> TeacherAgent:
+    def _initialize_agent_service(self, rag_service: RagService, quiz_generation_service: QuizGenerationService, document_management_service: DocumentManagementService, summarization_service: SummarizationService, database_service: DatabaseService) -> TeacherAgent:
         """
         Initialize the agent service with all required services.
         """
@@ -109,6 +123,7 @@ class UIIntegrationService:
                 rag_service=rag_service,
                 quiz_generation_service=quiz_generation_service,
                 document_management_service=document_management_service,
+                summarization_service=self.summarization_service,
                 llm_service=self.rag_service.llm_service,
                 database_service=database_service
             )
