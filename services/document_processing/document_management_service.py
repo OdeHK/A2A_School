@@ -12,26 +12,19 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-
-from langchain.schema.document import Document
-
 from services.models import (
     DocumentMetadata, 
     TableOfContents, 
-    TocSection,
+    TableOfContentsSection,
     ProcessingResult, 
     ProcessingStatus
 )
-
-from .document_repository import DocumentRepository
 from .toc_extractor import TOCExtractor
 from .document_loader import DocumentLoader, DocumentType
 from .document_chunker import DocumentChunker, ChunkingStrategyType
-from .document_library import generate_document_id
 from services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
-
 
 class DocumentManagementService:
     """
@@ -159,28 +152,6 @@ class DocumentManagementService:
             metadata.page_count = len(docs_list)
             self.database_service.save_document_metadata(username=username, document_id=metadata.document_id, metadata=metadata)
             
-            # Add document to library
-            document_titles = []
-            if extract_toc and 'extraction_result' in locals():
-                try:
-                    # Extract titles from TOC structure - now it's nested format
-                    document_titles = self._extract_titles_from_toc_structure(extraction_result.toc_structure.sections)
-                    idx = document_titles.index("full_document")
-                    document_titles = document_titles[:idx+1]
-                    
-                    idx = document_titles.index("full_document")
-                    document_titles = document_titles[:idx+1]
-                    
-                except Exception as e:
-                    logger.warning(f"Could not extract titles for document library: {e}")
-            
-            self.database_service.add_document_to_library(
-                username=username,
-                document_id=document_id,
-                name=file_path_obj.stem,  # File name without extension
-                title=document_titles
-            )
-
             logger.info(f"Added document {file_path} to document library")
 
             # Create success result
@@ -232,7 +203,7 @@ class DocumentManagementService:
         """
         return self.database_service.get_document_metadata(username=username, document_id=document_id)
 
-    def get_table_of_contents(self, username: str, document_id: str) -> Optional[TableOfContents]:
+    def get_table_of_contents(self, username: str, document_id: str) -> Optional[List[TableOfContentsSection]]:
         """
         Get table of contents for document (created from TOC structure data).
         
@@ -243,11 +214,11 @@ class DocumentManagementService:
             Table of contents or None if not found
         """
         # Lấy TOC structure data thay vì legacy TOC
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
-        return TableOfContents(**toc_structure_data)
+        return toc_structure_data
 
     def get_table_of_contents_as_string(self, username: str, document_id: str) -> Optional[str]:
         """
@@ -261,22 +232,14 @@ class DocumentManagementService:
             Table of contents formatted as string or None if not found
         """
         # Lấy TOC structure data trực tiếp
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) #TODO: replace user_id
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
         if not toc_structure_data:
             return None
         logger.info(f"Raw TOC structure data: {toc_structure_data}")
 
         # Remove full_document entries and convert to dictionary
         return self._format_toc_structure_as_string(document_id, toc_structure_data)
-    
-    # def list_session_documents(self) -> List[DocumentMetadata]:
-    #     """
-    #     List all documents in current session.
-        
-    #     Returns:
-    #         List of document metadata
-    #     """
-    #     return self.database_service.li()
+
 
     def get_content_data(self, username: str, document_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -329,25 +292,6 @@ class DocumentManagementService:
             logger.error(f"Error updating chunking strategy: {str(e)}")
             raise
     
-    # def get_current_session_id(self) -> Optional[str]:
-    #     """Get current session ID."""
-    #     return self.repository.get_current_session_id()
-    
-    # def create_new_session(self) -> str:
-    #     """Create new session."""
-    #     return self.repository.create_new_session()
-    
-    # def load_session(self, session_id: str) -> bool:
-    #     """Load existing session."""
-    #     return self.repository.load_session(session_id)
-    
-    # def get_vector_store_path(self) -> Optional[str]:
-    #     """Get vector store path for current session."""
-    #     return self.repository.get_vector_store_path()
-    
-    # def cleanup_temp_files(self) -> None:
-    #     """Clean up temporary files."""
-    #     self.repository.cleanup_temp_files()
     
     def _generate_document_id(self) -> str:
         """Generate unique document ID."""
@@ -383,24 +327,6 @@ class DocumentManagementService:
         
         return titles
     
-    # def get_service_status(self) -> Dict[str, Any]:
-    #     """
-    #     Get current service status.
-        
-    #     Returns:
-    #         Status information
-    #     """
-    #     return {
-    #         "repository_initialized": self.repository is not None,
-    #         "toc_extractor_initialized": self.toc_extractor is not None,
-    #         "loader_initialized": self.loader is not None,
-    #         "chunker_initialized": self.chunker is not None,
-    #         "current_session": self.repository.get_current_session_id(),
-    #         "chunker_strategy": (
-    #             self.chunker.strategy.strategy_name 
-    #             if hasattr(self.chunker, 'strategy') else "unknown"
-    #         )
-    #     }
     
     def _format_toc_as_string(self, toc: TableOfContents) -> str:
         """
@@ -425,12 +351,12 @@ class DocumentManagementService:
             result.extend(self._format_section_as_string(section, section_index=str(index + 1)))
         return "\n".join(result)
     
-    def _format_section_as_string(self, section: TocSection, section_index: str) -> List[str]:
+    def _format_section_as_string(self, section: TableOfContentsSection, section_index: str) -> List[str]:
         """
-        Format a single TocSection as string lines.
+        Format a single TableOfContentsSection as string lines.
         
         Args:
-            section: TocSection to format
+            section: TableOfContentsSection to format
             indent_level: Current indentation level
             
         Returns:
@@ -460,7 +386,7 @@ class DocumentManagementService:
         Returns:
             TableOfContents object
         """
-        # Convert structure data to TocSection objects
+        # Convert structure data to TableOfContentsSection objects
         sections = []
         
         for item_data in toc_structure_data:
@@ -469,7 +395,7 @@ class DocumentManagementService:
                 if 'id' not in item_data or 'title' not in item_data or 'level' not in item_data:
                     continue
                     
-                section = TocSection(
+                section = TableOfContentsSection(
                     section_id=item_data['id'],
                     section_title=item_data['title'],
                     parent_section_id=item_data.get('parent_id'),
@@ -491,21 +417,21 @@ class DocumentManagementService:
         )
     
     def _convert_children_from_structure_data(self, children_ids: List[str], 
-                                            all_structure_data: List[Dict[str, Any]]) -> List[TocSection]:
-        """Convert children IDs to TocSection objects from structure data."""
+                                            all_structure_data: List[Dict[str, Any]]) -> List[TableOfContentsSection]:
+        """Convert children IDs to TableOfContentsSection objects from structure data."""
         children = []
         
         # Create ID mapping - only include items with required fields
         id_to_item = {item['id']: item for item in all_structure_data if 'id' in item}
         
-        for child_id in children_ids:
+        for child_id in children_ids: 
             if child_id in id_to_item:
                 child_item = id_to_item[child_id]
                 # Skip items without required fields
                 if 'title' not in child_item or 'level' not in child_item:
                     continue
                     
-                child_section = TocSection(
+                child_section = TableOfContentsSection(
                     section_id=child_item['id'],
                     section_title=child_item['title'],
                     parent_section_id=child_item.get('parent_id'),
@@ -520,7 +446,7 @@ class DocumentManagementService:
         
         return children
     
-    def _format_toc_structure_as_string(self, document_id: str, toc_structure_data: List[Dict[str, Any]]) -> str:
+    def _format_toc_structure_as_string(self, document_id: str, toc_structure_data: List[TableOfContentsSection]) -> str:
         """
         Format TOC structure data as a readable string.
         
@@ -536,21 +462,19 @@ class DocumentManagementService:
         
         result = []
         result.append(f"Table of Contents for Document: {document_id}")
-        result.append(f"Extraction Method: enhanced_textrank")
-        result.append(f"Extracted on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         result.append("-" * 50)
         
         # Group by level and format
         level_1_items = [item for item in toc_structure_data 
-                         if item.get('level') == 1 and item.get('section_title') != "full_document"]
+                         if item.level == 1 and item.section_title != "full_document"]
          
         for index, item in enumerate(level_1_items):
             result.extend(self._format_structure_item_as_string(item, toc_structure_data, str(index + 1)))
         
         return "\n".join(result)
-    
-    def _format_structure_item_as_string(self, item: Dict[str, Any], 
-                                       all_structure_data: List[Dict[str, Any]], 
+
+    def _format_structure_item_as_string(self, item: TableOfContentsSection,
+                                       all_structure_data: List[TableOfContentsSection],
                                        section_index: str) -> List[str]:
         """
         Format a single TOC structure item as string lines.
@@ -564,16 +488,16 @@ class DocumentManagementService:
             List of formatted string lines
         """
         # Skip items without required fields
-        if 'section_title' not in item:
+        if not item.section_title:
             return []
 
-        page_info = f" (Page {item['page_number']})" if item.get('page_number') else ""
-        line = f"{section_index} {item['section_title']}{page_info}"
+        page_info = f" (Page {item.page_number})" if item.page_number else ""
+        line = f"{section_index} {item.section_title}{page_info}"
 
         result = [line]
         
         # Format children
-        children = item.get('children', [])
+        children = item.children
 
         for child_index, child_item in enumerate(children):
             result.extend(self._format_structure_item_as_string(
@@ -584,177 +508,3 @@ class DocumentManagementService:
 
         return result
     
-    # === Document Library Management Methods ===
-
-    def get_document_library(self, username: str) -> Dict[str, Dict[str, Any]]:
-        """
-        Get current session's document library (all documents).
-        
-        Returns:
-            Dictionary with document_id as key and document info as value
-        """
-        return self.database_service.get_document_library(username="khiemdangle") #TODO: replace user_id
-
-    
-    def get_document_from_library(self, name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get specific document from library by name.
-        
-        Args:
-            name: Document name
-            
-        Returns:
-            Document information or None if not found
-        """
-        return self.database_service.get_document_from_library(username="khiemdangle", name=name) #TODO: replace user_id
-    
-    # def get_document_library_summary(self) -> Dict[str, Any]:
-    #     """
-    #     Get summary information about the document library.
-        
-    #     Returns:
-    #         Summary information including document count and list of documents
-    #     """
-    #     library = self.database_service.get_document_library(user_id="khiemdangle") #TODO: replace user_id
-        
-    #     documents_info = []
-    #     for name, doc_info in library.items():
-    #         documents_info.append({
-    #             'document_id': doc_info.get('document_id'),
-    #             'name': doc_info['name'],
-    #             'title_count': len(doc_info.get('title', []))
-    #         })
-        
-    #     return {
-    #         'total_documents': len(library),
-    #         'documents': documents_info,
-    #         'session_id': self.repository.get_current_session_id()
-    #     }
-    
-    # def add_external_document_to_library(self, file_path: str, extract_bookmarks: bool = True) -> str:
-    #     """
-    #     Add an external document to the library without full processing.
-    #     Useful for referencing documents that don't need RAG processing.
-        
-    #     Args:
-    #         file_path: Path to the document file
-    #         extract_bookmarks: Whether to extract PDF bookmarks for title
-            
-    #     Returns:
-    #         Generated document_id
-    #     """
-    #     try:
-    #         file_path_obj = Path(file_path)
-            
-    #         if not file_path_obj.exists():
-    #             raise FileNotFoundError(f"File not found: {file_path}")
-            
-    #         # Generate document ID
-    #         doc_name = file_path_obj.stem
-    #         doc_id = generate_document_id(doc_name, str(file_path))
-            
-    #         # Extract bookmarks if requested and file is PDF
-    #         titles = []
-    #         if extract_bookmarks and file_path_obj.suffix.lower() == '.pdf':
-    #             try:
-    #                 from PyPDF2 import PdfReader
-    #                 from .document_library import get_all_bookmark_titles
-                    
-    #                 reader = PdfReader(str(file_path))
-    #                 titles = get_all_bookmark_titles(reader.outline)
-                    
-    #             except Exception as e:
-    #                 logger.warning(f"Could not extract bookmarks from {file_path}: {e}")
-            
-    #         # Add to library
-    #         self.repository.add_document_to_library(
-    #             document_id=doc_id,
-    #             name=doc_name,
-    #             path=str(file_path),
-    #             title=titles
-    #         )
-            
-    #         logger.info(f"Added external document {doc_id} to library")
-    #         return doc_id
-            
-    #     except Exception as e:
-    #         logger.error(f"Error adding external document to library: {e}")
-    #         raise
-    
-    # def remove_document_from_library(self, document_id: str) -> bool:
-    #     """
-    #     Remove a document from the library.
-        
-    #     Args:
-    #         document_id: Document identifier to remove
-            
-    #     Returns:
-    #         True if removed, False if not found
-    #     """
-    #     return self.repository.remove_document_from_library(document_id)
-    
-    # def search_documents_in_library(self, query: str) -> List[Dict[str, Any]]:
-    #     """
-    #     Search for documents in the library by name or title.
-        
-    #     Args:
-    #         query: Search query
-            
-    #     Returns:
-    #         List of matching documents
-    #     """
-    #     library = self.repository.list_all_documents_in_library()
-    #     query_lower = query.lower()
-        
-    #     matching_docs = []
-        
-    #     for name, doc_info in library.items():
-    #         # Search in name
-    #         if query_lower in doc_info['name'].lower():
-    #             matching_docs.append({
-    #                 'document_id': doc_info.get('document_id'),
-    #                 'name': doc_info['name'],
-    #                 'match_type': 'name'
-    #             })
-    #             continue
-            
-    #         # Search in titles
-    #         for title in doc_info.get('title', []):
-    #             if query_lower in title.lower():
-    #                 matching_docs.append({
-    #                     'document_id': doc_info.get('document_id'),
-    #                     'name': doc_info['name'],
-    #                     'match_type': 'title',
-    #                     'matched_title': title
-    #                 })
-    #                 break
-        
-    #     return matching_docs
-    
-    # def get_document_info_from_library(self, name: str) -> Optional[Dict[str, Any]]:
-    #     """
-    #     Get detailed information about a document from the library.
-        
-    #     Args:
-    #         name: Document name
-            
-    #     Returns:
-    #         Document information or None if not found
-    #     """
-    #     doc_info = self.repository.get_document_from_library(name)
-        
-    #     if not doc_info:
-    #         return None
-        
-    #     # Add additional information (include document_id, exclude path)
-    #     result = {
-    #         'document_id': doc_info.get('document_id'),
-    #         'name': doc_info['name'],
-    #         'title': doc_info.get('title', []),
-    #         'title_count': len(doc_info.get('title', []))
-    #     }
-        
-    #     # Note: Metadata checking removed since we no longer use document_id as reference
-    #     result['is_processed'] = False
-        
-    #     return result

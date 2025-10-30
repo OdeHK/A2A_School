@@ -5,54 +5,18 @@ Uses TextRank summarization for intelligent content extraction.
 """
 
 import logging
-import os
-import json
 import uuid
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict        
-
+from services.models import TableOfContentsSection, TableOfContents
 # Import from existing TOC system
 from services.summarization.TOC_generator import TOCGenerator, BookmarkNode, TaskType, TOCStrategyFactory
 
 logger = logging.getLogger(__name__)
 
 
-# === DATA MODELS ===
-@dataclass
-class TOCSection:
-    """TOC section with nested children structure"""
-    section_id: str
-    section_title: str
-    parent_section_id: Optional[str]
-    level: int
-    page_number: Optional[int]
-    children: List['TOCSection']
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'section_id': self.section_id,
-            'section_title': self.section_title,
-            'parent_section_id': self.parent_section_id,
-            'level': self.level,
-            'page_number': self.page_number,
-            'children': [child.to_dict() for child in self.children]
-        }
-
-@dataclass
-class TOCStructure:
-    """Complete TOC structure for a document"""
-    document_id: str
-    extraction_date: str
-    sections: List[TOCSection]
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'document_id': self.document_id,
-            'extraction_date': self.extraction_date,
-            'sections': [section.to_dict() for section in self.sections]
-        }
 
 @dataclass  
 class ContentItem:
@@ -83,7 +47,7 @@ class ContentData:
 class TOCExtractionResult:
     """Complete extraction result with both structure and content"""
     pdf_path: str
-    toc_structure: TOCStructure
+    toc_structure: TableOfContents
     content_data: ContentData
     
     def to_dict(self) -> Dict[str, Any]:
@@ -158,9 +122,12 @@ class TOCExtractor:
         
         # STEP 2: Convert to structured format with unique IDs
         toc_sections = self._convert_to_toc_sections(bookmark_tree)
-        toc_structure = TOCStructure(
+        toc_sections = self._infer_page_ranges(toc_sections) # Calculate end_page for each section
+        logger.info("Calculated page ranges for all sections")
+        
+        toc_structure = TableOfContents(
             document_id=document_id,
-            extraction_date=datetime.now().isoformat(),
+            extraction_date=datetime.now(),
             sections=toc_sections
         )
         
@@ -196,7 +163,7 @@ class TOCExtractor:
         )
     
     
-    def _convert_to_toc_sections(self, bookmark_tree: List[BookmarkNode]) -> List[TOCSection]:
+    def _convert_to_toc_sections(self, bookmark_tree: List[BookmarkNode]) -> List[TableOfContentsSection]:
         """
         Convert BookmarkNode tree to nested TOC sections structure.
         
@@ -204,9 +171,9 @@ class TOCExtractor:
             bookmark_tree: BookmarkNode tree from TOCGenerator
             
         Returns:
-            List of TOCSection with nested children
+            List of TableOfContentsSection with nested children
         """
-        def process_node(node: BookmarkNode, level: int = 1, parent_id: Optional[str] = None) -> TOCSection:
+        def process_node(node: BookmarkNode, level: int = 1, parent_id: Optional[str] = None) -> TableOfContentsSection:
             """Recursively process nodes and create nested structure."""
             # Generate unique ID
             node_id = f"toc_{uuid.uuid4().hex[:8]}"
@@ -218,12 +185,12 @@ class TOCExtractor:
                 children.append(child_section)
             
             # Create TOC section
-            section = TOCSection(
+            section = TableOfContentsSection(
                 section_id=node_id,
                 section_title=node.title,
                 parent_section_id=parent_id,
                 level=level,
-                page_number=node.page_number if hasattr(node, 'page_number') else None,
+                page_number=node.page,
                 children=children
             )
             
@@ -237,7 +204,40 @@ class TOCExtractor:
         
         return sections
     
-    def _generate_content_items(self, toc_sections: List[TOCSection], 
+    def _infer_page_ranges(self, toc_sections: List[TableOfContentsSection], 
+                          next_section_start_page: Optional[int] = None) -> List[TableOfContentsSection]:
+        """
+        Calculate end_page for each section based on the start page of the next section.
+        Uses reverse traversal to infer page ranges.
+        
+        Args:
+            toc_sections: List of TOC sections with nested children
+            next_section_start_page: Start page of the next section (used for calculating end_page)
+            
+        Returns:
+            List of TableOfContentsSection with end_page calculated
+        """
+        # Process sections in reverse order
+        for section in reversed(toc_sections):
+            
+            # If section has children, process them first
+            if section.children:
+                section.children = self._infer_page_ranges(section.children, next_section_start_page)
+            
+            # Calculate end_page for current section
+            if next_section_start_page is not None and section.page_number is not None:
+                section.end_page = next_section_start_page 
+            else:
+                # If no next section, end_page remains None (indicating end of document)
+                section.end_page = None
+            
+            # Update next_section_start_page for the previous section
+            if section.page_number is not None:
+                next_section_start_page = section.page_number
+        
+        return toc_sections
+    
+    def _generate_content_items(self, toc_sections: List[TableOfContentsSection], 
                                bookmark_tree: List[BookmarkNode]) -> List[ContentItem]:
         """
         Generate content for each TOC section using TextRank.
@@ -253,8 +253,8 @@ class TOCExtractor:
         
         # Create a mapping from title to BookmarkNode for content lookup
         title_to_node = self._create_title_mapping(bookmark_tree)
-        
-        def process_section(section: TOCSection):
+
+        def process_section(section: TableOfContentsSection):
             """Recursively process sections and generate content."""
             try:
                 # Find corresponding bookmark node

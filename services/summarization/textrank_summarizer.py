@@ -42,7 +42,7 @@ class HybridSummarizerStrategy:
         # TextRank components
         self.embeddings = HuggingFaceEmbeddings(
             model_name=embedding_model,
-            cache_folder=ModelConstants.HUGGINGFACE_CACHE_DIR,
+            cache_folder=ModelConstants.get_huggingface_cache_dir(),
             model_kwargs={"trust_remote_code": True,
                           "device": None}
         )
