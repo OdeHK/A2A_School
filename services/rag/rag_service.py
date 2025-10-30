@@ -1,7 +1,7 @@
 from services.document_processing.document_loader import DocumentLoader, DocumentType
 from services.document_processing.document_chunker import DocumentChunker, ChunkingStrategyType
 from .vector_service import VectorService
-from .llm_service import LLMService
+from ..llm_service import LLMService
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import os

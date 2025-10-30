@@ -10,7 +10,7 @@ This module contains all services related to RAG operations:
 
 from .embedding_service import EmbeddingService, EmbeddingType
 from .vector_service import VectorService  
-from .llm_service import LLMService
+from ..llm_service import LLMService
 from .rag_service import RagService
 
 __all__ = [
