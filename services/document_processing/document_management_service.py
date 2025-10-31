@@ -203,36 +203,38 @@ class DocumentManagementService:
         """
         return self.database_service.get_document_metadata(username=username, document_id=document_id)
 
-    def get_table_of_contents(self, username: str, document_id: str) -> Optional[List[TableOfContentsSection]]:
+    def get_table_of_contents(self, username: str, document_id: str, repeat_toc: bool = True) -> Optional[List[TableOfContentsSection]]:
         """
         Get table of contents for document (created from TOC structure data).
         
         Args:
+            username: User identifier
             document_id: Document identifier
-            
+            repeat_toc: If True, include a section name "full_document" representing the entire document at the end of the TOC list.
         Returns:
             Table of contents or None if not found
         """
         # Lấy TOC structure data thay vì legacy TOC
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id, repeat_toc=repeat_toc) 
         if not toc_structure_data:
             return None
         # Tạo TableOfContents từ TOC structure data
         return toc_structure_data
 
-    def get_table_of_contents_as_string(self, username: str, document_id: str) -> Optional[str]:
+    def get_table_of_contents_as_string(self, username: str, document_id: str, repeat_toc: bool = True) -> Optional[str]:
         """
         Get table of contents for document formatted as string.
         
         Args:
             username: User identifier
             document_id: Document identifier
+            repeat_toc: If True, include a section name "full_document" representing the entire document at the end of the TOC list.
             
         Returns:
             Table of contents formatted as string or None if not found
         """
         # Lấy TOC structure data trực tiếp
-        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id) 
+        toc_structure_data = self.database_service.get_toc_structure_data(username=username, document_id=document_id, repeat_toc=repeat_toc) 
         if not toc_structure_data:
             return None
         logger.info(f"Raw TOC structure data: {toc_structure_data}")
@@ -252,20 +254,6 @@ class DocumentManagementService:
             List of content items or None if not found
         """
         return self.database_service.get_content_data(username=username, document_id=document_id)
-
-    def get_toc_structure_data(self, username: str, document_id: str) -> Optional[List[Dict[str, Any]]]:
-        """
-        Get TOC structure data from TOC extractor for document.
-        
-        Args:
-            username: User identifier
-            document_id: Document identifier
-            
-        Returns:
-            List of TOC structure items or None if not found
-        """
-        return self.database_service.get_toc_structure_data(username=username, document_id=document_id)
-
 
     def get_document_id_dict(self, username: str) -> Dict[str, str]:
         """
@@ -343,7 +331,6 @@ class DocumentManagementService:
         
         result = []
         result.append(f"Table of Contents for Document: {toc.document_id}")
-        result.append(f"Extraction Method: {toc.extraction_method}")
         result.append(f"Extracted on: {toc.extraction_date}")
         result.append("-" * 50)
         # Format sections recursively
@@ -410,10 +397,8 @@ class DocumentManagementService:
         
         return TableOfContents(
             document_id=document_id,
-            extraction_method='enhanced_textrank',
             extraction_date=datetime.now(),
-            sections=sections,
-            raw_text=f"Enhanced extraction with {len(toc_structure_data)} sections"
+            sections=sections
         )
     
     def _convert_children_from_structure_data(self, children_ids: List[str], 
@@ -465,8 +450,7 @@ class DocumentManagementService:
         result.append("-" * 50)
         
         # Group by level and format
-        level_1_items = [item for item in toc_structure_data 
-                         if item.level == 1 and item.section_title != "full_document"]
+        level_1_items = [item for item in toc_structure_data]
          
         for index, item in enumerate(level_1_items):
             result.extend(self._format_structure_item_as_string(item, toc_structure_data, str(index + 1)))
