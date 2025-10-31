@@ -218,14 +218,15 @@ class TOCExtractor:
             List of TableOfContentsSection with end_page calculated
         """
         # Process sections in reverse order
-        for section in reversed(toc_sections):
-            
+        sections = [section for section in toc_sections if section.section_title != "full_document"]
+        for section in reversed(sections):
+
             # If section has children, process them first
             if section.children:
                 section.children = self._infer_page_ranges(section.children, next_section_start_page)
             
             # Calculate end_page for current section
-            if next_section_start_page is not None and section.page_number is not None:
+            if next_section_start_page is not None:
                 section.end_page = next_section_start_page 
             else:
                 # If no next section, end_page remains None (indicating end of document)
