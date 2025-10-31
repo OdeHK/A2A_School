@@ -178,24 +178,27 @@ class QuizGenerationService:
                 
                 try:
                     # Get page range for the section to filter retrieved documents
-                    start_page, end_page = self._get_page_range_from_section(toc_data, task.section_title)
-                    
+                    start_page, end_page = QuizGenerationService._get_page_range_using_section_id(toc_data, task.section_id)
                     logger.info(f"Retrieving documents for query: {task.query_string}")
+                    
                     # Prepare metadata filter for document-specific and user-specific queries
+                    conditions = [
+                        {"document_id": document_id},
+                        {"username": username}
+                    ]
+                    if start_page is not None:
+                        conditions.append({"page_number": {"$gte": start_page}}) #type: ignore
+                    if end_page is not None:
+                        conditions.append({"page_number": {"$lte": end_page}}) #type: ignore
                     metadata_filter = {
-                        "$and": [
-                            {"document_id": document_id},
-                            {"username": username},
-                            {"page_number": {"$gte": start_page} if start_page is not None else {}},
-                            {"page_number": {"$lte": end_page} if end_page is not None else {}}
-                        ]
+                        "$and": conditions
                     }
                     logger.info(f"Applying metadata filter: {metadata_filter}")
                     
                     # Use retrieve_documents with metadata filtering
                     relevant_docs = self.rag_service.retrieve_documents(
                         query=task.query_string,
-                        top_k=end_page - start_page + 1 if start_page is not None and end_page is not None else 5,
+                        top_k=end_page - start_page + 1 if start_page is not None and end_page is not None else 10,
                         filter=metadata_filter
                     )
                     
@@ -349,30 +352,30 @@ class QuizGenerationService:
         """Write generated questions to database"""
         self.database_service.save_quizset(username=username, quizset=questions)
     
-    def _get_page_range_from_section(
-        self, 
+    @staticmethod
+    def _get_page_range_using_section_id(
         toc_sections: List[TableOfContentsSection], 
-        section_title: str
+        section_id: str
     ) -> tuple[Optional[int], Optional[int]]:
         """
         Get page range for a given section by searching through the TOC structure.
         
         Args:
             toc_sections: List of TableOfContentsSection objects to search through
-            section_title: Title of the section to find
-            
+            section_id: ID of the section to find
+
         Returns:
             Tuple of (start_page, end_page). Returns (None, None) if section not found
             or if page information is not available.
         """
         def search_section(sections: List[TableOfContentsSection]) -> tuple[Optional[int], Optional[int]]:
-            """Recursively search for section by title"""
+            """Recursively search for section by ID"""
             for section in sections:
                 # Check if this is the target section
-                if section.section_title == section_title:
+                if section.section_id == section_id:
                     page_number = section.page_number
                     end_page = section.end_page
-                    logger.info(f"Section '{section_title}' found: start_page={page_number}, end_page={end_page}")
+                    logger.info(f"Section '{section.section_title} (ID: {section_id})' found: start_page={page_number}, end_page={end_page}")
                     return (page_number, end_page)
       
                 
@@ -385,7 +388,7 @@ class QuizGenerationService:
             return (None, None)
         
         # Perform the search
-        logger.info(f"Searching for section '{section_title}' in TOC")
+        logger.info(f"Searching for section '{section_id}' in TOC")
         start_page, end_page = search_section(toc_sections)
         
         return (start_page, end_page)
