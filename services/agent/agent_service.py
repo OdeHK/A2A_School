@@ -247,7 +247,7 @@ class TeacherAgent:
                     return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
 
                 # Get table of contents
-                toc_data = self.document_management_service.get_table_of_contents(username=username, document_id=selected_document_id)
+                toc_data = self.document_management_service.get_table_of_contents(username=username, document_id=selected_document_id, repeat_toc=False)
                 logger.debug(f"TOC data: {toc_data}")
                 if not toc_data:
                     logger.warning(f"Không tìm thấy mục lục cho tài liệu: {selected_document_id}")
