@@ -1,14 +1,43 @@
-import time
+import sys
 import gradio as gr
 from typing import List
 import logging
-
-# Import our services
+import os
 from services.ui_integration_service import UIIntegrationService
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+def setup_logging():
+    """Setup logging with file and console handlers"""
+    # Remove all existing handlers
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+        
+    # Create handlers
+    log_file_path = os.path.abspath('app.log')
+    file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    console_handler = logging.StreamHandler(sys.stdout)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
+    )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Set level
+    file_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.INFO)
+    
+    # Add handlers to root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    return logging.getLogger("teacher_for_agent")
+
+logger = setup_logging()
+logger.info(f"Logging initialized. Log file: {os.path.abspath('ui/app.log')}")
 
 # Initialize the UI integration service
 ui_service = UIIntegrationService()
@@ -361,6 +390,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
+
     try:
         demo.queue()
         demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
