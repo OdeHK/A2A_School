@@ -28,7 +28,7 @@ class HybridSummarizerStrategy:
     
     def __init__(self, 
                  embedding_model: str = "Alibaba-NLP/gte-multilingual-base",
-                 cache_folder: str = "./model",
+                 cache_folder: str = None,
                  token_manager: Optional[TokenManager] = None,
                  cost_optimization: bool = True):
         """

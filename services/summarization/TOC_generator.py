@@ -22,6 +22,7 @@ from services.summarization.token_manager import TokenManager, create_token_mana
 from services.summarization.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
 from services.summarization.performance_optimizations import get_embedding_cache
 
+
 logger = logging.getLogger(__name__)
 
 class TaskType(str, Enum):
@@ -75,7 +76,7 @@ class SummarizerStrategy(TOCContentStrategy):
     """Strategy for generating summaries using embedding-based TextRank with token optimization"""
     
     def __init__(self, model_name: str = "Alibaba-NLP/gte-multilingual-base", 
-                 cache_folder: str = "./model"):
+                 cache_folder: str = None):
         """
         Initialize summarizer strategy with cached embeddings.
         
@@ -118,7 +119,7 @@ class SummarizerStrategy(TOCContentStrategy):
         
         if len(chunks) == 1:
             return chunks[0]
-        
+    
         # Variables for cleanup
         doc_embeddings = None
         cooc_matrix = None

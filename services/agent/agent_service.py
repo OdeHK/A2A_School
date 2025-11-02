@@ -144,12 +144,16 @@ class TeacherAgent:
                 if not selected_document_id or not user_request:
                     logger.warning("Cần cung cấp document_id và yêu cầu người dùng.")
                     return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
-                titles =  None
+                previous_titles =  None
+                previous_summary_content = None
+                previous_original_content = None
                 logger.info(f"Memory entries: {self.memory.entries}")
                 if self.enable_memory and self.memory:
                     for entry in reversed(self.memory.entries):
                         if entry.task_type == "summary" and entry.metadata.get("document_id") == selected_document_id:
-                            titles = entry.metadata.get("titles", None)
+                            previous_titles = entry.metadata.get("titles", None)
+                            previous_summary_content = entry.content
+                            previous_original_content = entry.metadata.get("original_content", None)
                             logger.info(f"Found matched_document from memory: {selected_document_id}")
                             break
                 
@@ -159,13 +163,15 @@ class TeacherAgent:
                     context_for_llm = self.memory.get_context_for_llm(
                         task_type="summary"
                     )
-                
-                summary, titles = self.summarization_service.generate_summary(
+
+                summary, original_content, titles = self.summarization_service.generate_summary(
                     user_request=user_request,
                     context_for_llm=context_for_llm,
                     username=username,
                     document_id=selected_document_id,
-                    titles=titles
+                    titles=previous_titles,
+                    summary_content=previous_summary_content,
+                    original_content=previous_original_content
                 )
                 
                 # Memory: Add agent response với metadata từ summary result
@@ -175,7 +181,8 @@ class TeacherAgent:
                         response=summary,
                         metadata={
                             "document_id": selected_document_id,
-                            "titles": titles
+                            "titles": titles,
+                            "original_content": original_content
                         },
                         task_type="summary"
                     )

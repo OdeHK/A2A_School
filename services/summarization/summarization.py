@@ -19,8 +19,8 @@ class SummarizationState(TypedDict):
     username: Optional[str]
     document_id: Optional[str]
     titles: list[str]
-    extracted_content: Optional[str]
-    final_summary: Optional[str]
+    original_content: Optional[str]
+    summary_content: Optional[str]
     context_for_llm: Optional[str]
 
 
@@ -45,7 +45,9 @@ class SummarizationService:
                         context_for_llm: Optional[str] = None,
                         username: Optional[str] = None,
                         document_id: Optional[str] = None,
-                        titles: Optional[list[str]] = None) -> str:
+                        titles: Optional[list[str]] = None,
+                        original_content: Optional[str] = None,
+                        summary_content: Optional[str] = None) -> str:
         """
         Main entry point để tạo bản tóm tắt
         
@@ -54,7 +56,7 @@ class SummarizationService:
             context_for_llm: Context từ memory (optional)
             
         Returns:
-            final_summary: Bản tóm tắt được sinh ra
+            summary_content: Bản tóm tắt được sinh ra
         """
         logger.info("========================================")
         logger.info("SUMMARIZATION WORKFLOW START")
@@ -66,8 +68,8 @@ class SummarizationService:
             "username": username,
             "document_id": document_id,
             "titles": titles,
-            "extracted_content": None,
-            "final_summary": None,
+            "original_content": original_content,
+            "summary_content": summary_content,
             "context_for_llm": context_for_llm
         }
         
@@ -77,7 +79,7 @@ class SummarizationService:
         logger.info("SUMMARIZATION WORKFLOW COMPLETE")
         logger.info("========================================")
 
-        return result.get("final_summary", "Không thể tạo bản tóm tắt."), result.get("titles", "")
+        return result.get("summary_content", "Không thể tạo bản tóm tắt."), result.get("original_content", ""), result.get("titles", "")
 
     def _create_workflow(self):
         """Create LangGraph workflow with properly configured nodes"""
@@ -126,6 +128,7 @@ class SummarizationService:
                     "user_request": state["user_request"],
                     
                 })
+                titles.sort()
                 
                 logger.info(f"Matched titles: {titles}")
                 
@@ -137,6 +140,9 @@ class SummarizationService:
             # -----------------------------
             # Step 2: Kiểm tra tài liệu có được tìm thấy không
             # -----------------------------
+            original_content = state.get("original_content", "")
+            summary_content = state.get("summary_content", "")
+            
             if not titles:
                 if context_for_llm and state.get("titles"):
                     titles = state.get("titles")
@@ -144,57 +150,44 @@ class SummarizationService:
                 else:
                     titles = ["full_document"]
                     logger.info("Using full_document as default")
-                
-        
+            else:
+                state_titles = state.get("titles") or []
+                if any(title not in state_titles for title in titles):
+                    original_content = ""
+                    summary_content = ""
+                    logger.info("Titles changed, resetting original_content and summary_content")
             # -----------------------------
             # Step 3: Lấy nội dung từ document_management_service
             # -----------------------------
-            try:
-                extracted_content = []
+            if not original_content:
+                content_list = []
                 for content_item in content_data["content"]:
                     if content_item["title"] in titles:
-                        extracted_content.append(content_item["content"])
-                extracted_content = "\n".join(extracted_content)
-                if not extracted_content:
+                        content_list.append(f"<{content_item['title']}>{content_item['content']}</{content_item['title']}>")
+                original_content = "\n".join(content_list)
+                logger.info(f"Found original content: {original_content}")
+                if not original_content:
                     logger.warning(f"No content found for titles: {titles}")
                     return {
                         **state,
-                        "final_summary": "Không tìm thấy nội dung để tóm tắt."
+                        "summary_content": "Không tìm thấy nội dung để tóm tắt."
                     }
                 
-                logger.info(f"Found content length: {len(extracted_content)} characters")
+                logger.info(f"Found content length: {len(original_content)} characters")
                 
-            except Exception as e:
-                logger.error(f"Error extracting content: {e}")
-                return {
-                    **state,
-                    "final_summary": f"Lỗi khi trích xuất nội dung: {str(e)}"
-                }
+            
             
             logger.info("=== FIND CONTENT NODE END ===")
             return {
                 **state,
                 "titles": titles,
-                "extracted_content": extracted_content
+                "summary_content": summary_content,
+                "original_content": original_content
             }
 
         def summarization_node(state: SummarizationState) -> Dict[str, Any]:
             """Node để tạo bản tóm tắt từ nội dung"""
             logger.info("=== SUMMARIZATION NODE START ===")
-            
-            # Kiểm tra nếu đã có final_summary từ find_content_node (lỗi)
-            if state.get("final_summary"):
-                logger.info("Final summary already set (error case), skipping summarization")
-                return state
-            
-            extracted_content = state.get("extracted_content")
-            
-            if not extracted_content:
-                logger.warning("No content to summarize")
-                return {
-                    **state,
-                    "final_summary": "Không có nội dung để tóm tắt."
-                }
             
             # -----------------------------
             # Generate summary using LLM
@@ -203,7 +196,9 @@ class SummarizationService:
             
             # Prepare input
             llm_input = {
-                "input_text": extracted_content
+                "original_content": state.get("original_content", ""),
+                "summary_content": state.get("summary_content", ""),
+                "user_request": state["user_request"] if state.get("summary_content") else "",
             }
             
             # Add context if available
@@ -218,7 +213,7 @@ class SummarizationService:
                 
                 logger.info(f"Summary generated: {summary.content[:100]}...")
                 
-                final_summary = summary.content
+                summary_content = summary.content
                 extra_questions = [
                     #"✂️ Bạn có muốn tôi làm nó ngắn gọn hơn (ví dụ: chỉ 3 gạch đầu dòng) không?",
                     #"🎯 Bạn có muốn tôi tập trung vào một khía cạnh cụ thể nào khác của tài liệu (ví dụ: chỉ tóm tắt phần 'kết luận' hoặc 'phương pháp luận') không?",
@@ -229,16 +224,16 @@ class SummarizationService:
                 ]
                 random_question = random.choice(extra_questions)
                 state['user_request'] = random_question
-                final_summary += f"\n\n\n{random_question}"
+                summary_content += f"\n\n\n{random_question}"
 
             except Exception as e:
                 logger.error(f"Error generating summary: {e}")
-                final_summary = f"Lỗi khi tạo bản tóm tắt: {str(e)}"
+                summary_content = f"Lỗi khi tạo bản tóm tắt: {str(e)}"
             
             logger.info("=== SUMMARIZATION NODE END ===")
             return {
                 **state,
-                "final_summary": final_summary
+                "summary_content": summary_content
             }
         
 

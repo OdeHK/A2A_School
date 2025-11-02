@@ -7,6 +7,7 @@ unit_test/
 example_data/
 src/
 
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -202,8 +203,8 @@ cython_debug/
 .ruff_cache/
 /model
 
-# Hugging Face cache
-session_data/temp/huggingface_cache/
+# Hugging Face caches
+session_data/
 model/models--*/
 
 # PyPI configuration file

@@ -213,12 +213,12 @@ class DocumentManagementService:
                 except Exception as e:
                     logger.warning(f"Could not extract titles for document library: {e}")
             
-            self.database_service.add_document_to_library(
-                username=username,
-                document_id=document_id,
-                name=doc_name,
-                title=document_titles
-            )
+            # self.database_service.add_document_to_library(
+            #     username=username,
+            #     document_id=document_id,
+            #     name=doc_name,
+            #     title=document_titles
+            # )
 
             logger.info(f"Added document {file_path} to document library")
 
