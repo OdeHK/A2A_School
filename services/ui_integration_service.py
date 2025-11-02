@@ -26,6 +26,14 @@ class UIIntegrationService:
     
     def __init__(self):
         """Initialize the UI integration service."""
+        self.rag_service: Optional[RagService] = None
+        self.doc_management_service: Optional[DocumentManagementService] = None
+        self.quiz_generation_service: Optional[QuizGenerationService] = None
+        self.summarization_service: Optional[SummarizationService] = None
+        self.agent_service: Optional[TeacherAgent] = None
+        self.processing_status: Dict[str, Any] = {}
+        self.current_loader_version: str = "Version 1"  # Default loader version
+        
         # Initialize services in correct order
         self.rag_service = self._initialize_rag_service()
         self.database_service = self._initialize_database_service()
@@ -133,19 +141,33 @@ class UIIntegrationService:
             logger.error(f"Error initializing agent service: {str(e)}")
             raise e
 
-    def process_uploaded_document(self, uploaded_file_path: str, username: str): 
-        """Handle file upload from Gradio interface using DocumentManagementService."""
+    def process_uploaded_document(self, uploaded_file_path: str, username: str, 
+                                   source_type: str = "upload", 
+                                   loader_version: str = "Version 1"): 
+        """Handle file upload from Gradio interface using DocumentManagementService.
+        
+        Args:
+            uploaded_file_path: Path to the uploaded file or URL
+            username: Username of the user
+            source_type: Type of source - "upload" for files or "url" for links
+            loader_version: Loader version - "Version 1" or "Version 2"
+        """
 
         if not self.doc_management_service:
             return "Document management service not available", "Error"
         
         try:
+            # Determine loader config based on source type and version
+            loader_config = self._get_loader_config(source_type, loader_version)
+            
             # Use the document management service to process the uploaded file
-            # TODO: Determine which file types to support
-            result = self.doc_management_service.process_uploaded_document(file_path=uploaded_file_path,
-                                                                  username=username,
-                                                                  rag_service=self.rag_service,
-                                                                  extract_toc=True)
+            result = self.doc_management_service.process_uploaded_document(
+                file_path=uploaded_file_path,
+                username=username,
+                rag_service=self.rag_service,
+                extract_toc=True,
+                loader_config=loader_config
+            )
             
 
             return (f"✅ Đã xử lý thành công: {result.file_name}\n"
@@ -153,6 +175,30 @@ class UIIntegrationService:
                    f"🔪 Số đoạn: {result.metadata.chunk_count if result.metadata else 'N/A'}\n")
         except Exception as e:
             return f"❌ Error: {str(e)}", "Error"
+    
+    def _get_loader_config(self, source_type: str, loader_version: str) -> Dict[str, Any]:
+        """
+        Determine loader configuration based on source type and version.
+        
+        Args:
+            source_type: "upload" for uploaded files or "url" for links
+            loader_version: "Version 1" or "Version 2"
+            
+        Returns:
+            Dictionary with loader configuration
+        """
+        from services.document_processing.document_loader import PDFLoaderType, WebsiteLoaderType
+        
+        config = {}
+        
+        if source_type == "upload":
+            if loader_version == "Version 1":
+                config['pdf_loader_type'] = PDFLoaderType.PYMUPDF
+            else:  
+                config['pdf_loader_type'] = PDFLoaderType.DOCLING
+        else:  
+            config['website_loader_type'] = WebsiteLoaderType.DOCLING
+        return config
     
     def handle_url_input(self, url: str) :
         """
@@ -167,6 +213,28 @@ class UIIntegrationService:
         #TODO: Implement URL handling logic
         pass
     
+    def update_loader_version(self, loader_version: str) -> str:
+        """
+        Update the loader version setting.
+        
+        Args:
+            loader_version: New loader version ("Version 1" or "Version 2")
+            
+        Returns:
+            Status message
+        """
+        try:
+            self.current_loader_version = loader_version
+            
+            logger.info(f"Loader version changed to: {loader_version}")
+            return f"✅ Loader version updated to: {loader_version}\n" \
+                   f"📝 Upload: {'PyMuPDF' if loader_version == 'Version 1' else 'Docling'}\n" \
+                   f"🔗 Link: Docling"
+        except Exception as e:
+            error_msg = f"Error updating loader version: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+
     def update_chunker_strategy(self, strategy: str) -> str:
         """
         Update the chunking strategy and reinitialize services.

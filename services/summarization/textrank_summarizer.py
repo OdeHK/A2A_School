@@ -5,12 +5,13 @@ import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
 from langchain_huggingface import HuggingFaceEmbeddings
 
-
 from services.summarization.token_manager import TokenManager, create_token_manager
+from services.summarization.performance_optimizations import get_embedding_cache
 from config.settings import get_settings
 from config.constants import ModelConstants
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 class HybridSummarizerStrategy:
     """
@@ -27,11 +28,11 @@ class HybridSummarizerStrategy:
     
     def __init__(self, 
                  embedding_model: str = "Alibaba-NLP/gte-multilingual-base",
-                 cache_folder: str = "./model",
+                 cache_folder: str = None,
                  token_manager: Optional[TokenManager] = None,
                  cost_optimization: bool = True):
         """
-        Initialize pure TextRank summarizer
+        Initialize pure TextRank summarizer with cached embeddings
         
         Args:
             embedding_model: Model for TextRank embeddings
@@ -39,12 +40,11 @@ class HybridSummarizerStrategy:
             token_manager: Token manager instance
             cost_optimization: Enable content optimization (always True for TextRank)
         """
-        # TextRank components
-        self.embeddings = HuggingFaceEmbeddings(
+        # 🚀 Use cached embeddings instead of creating new instance
+        embedding_cache = get_embedding_cache()
+        self.embeddings = embedding_cache.get_or_create_embeddings(
             model_name=embedding_model,
-            cache_folder=ModelConstants.get_huggingface_cache_dir(),
-            model_kwargs={"trust_remote_code": True,
-                          "device": None}
+            cache_folder=cache_folder
         )
         
         # Token management (no LLM needed)
@@ -123,7 +123,6 @@ class HybridSummarizerStrategy:
         """
         logger.debug("Performing TextRank chunk selection")
         
-        # Use adaptive chunking from token_manager (MUCH BETTER!)
         chunks = self.token_manager.adaptive_chunking(text)
         
         if not chunks:
@@ -183,7 +182,6 @@ class HybridSummarizerStrategy:
                 if similarity_matrix is not None:
                     del similarity_matrix
 
-                # clear unused GPU cache (does NOT remove model)
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.ipc_collect()

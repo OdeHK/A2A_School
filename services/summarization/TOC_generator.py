@@ -20,6 +20,8 @@ from pathlib import Path
 
 from services.summarization.token_manager import TokenManager, create_token_manager
 from services.summarization.textrank_summarizer import HybridSummarizerStrategy, create_hybrid_summarizer
+from services.summarization.performance_optimizations import get_embedding_cache
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,26 +76,26 @@ class SummarizerStrategy(TOCContentStrategy):
     """Strategy for generating summaries using embedding-based TextRank with token optimization"""
     
     def __init__(self, model_name: str = "Alibaba-NLP/gte-multilingual-base", 
-                 cache_folder: str = "./model"):
+                 cache_folder: str = None):
         """
-        Initialize summarizer strategy.
+        Initialize summarizer strategy with cached embeddings.
         
         Args:
             model_name: Name of the embedding model to use
             cache_folder: Folder to cache the model
         """
-        self.embeddings = HuggingFaceEmbeddings(
+        # 🚀 Use cached embeddings instead of creating new instance
+        embedding_cache = get_embedding_cache()
+        self.embeddings = embedding_cache.get_or_create_embeddings(
             model_name=model_name,
-            cache_folder=ModelConstants.get_huggingface_cache_dir(),
-            model_kwargs={"trust_remote_code": True, 
-                          "device": None}
+            cache_folder=cache_folder
         )
         
         # Initialize token manager for optimal chunking
         from .token_manager import TokenManager
-        self.token_manager = TokenManager(model_name="gpt-4")  # Default for basic strategy
+        self.token_manager = TokenManager(model_name="gpt-oss-20b") 
         
-        logger.info(f"Initialized SummarizerStrategy with model: {model_name}")
+        logger.info(f"Initialized SummarizerStrategy with cached model: {model_name}")
 
     @property
     def strategy_name(self) -> str:
@@ -117,6 +119,10 @@ class SummarizerStrategy(TOCContentStrategy):
         
         if len(chunks) == 1:
             return chunks[0]
+    
+        # Variables for cleanup
+        doc_embeddings = None
+        cooc_matrix = None
         
         try:
             # Get embeddings
@@ -153,6 +159,26 @@ class SummarizerStrategy(TOCContentStrategy):
         except Exception as e:
             logger.error(f"Error generating summary for {title}: {e}")
             return f"Tóm tắt {title}: Lỗi khi xử lý ({str(e)})."
+        finally:
+            # 🧹 Cleanup temporary GPU tensors (keep model on GPU)
+            try:
+                import torch
+
+                # Delete only large intermediate tensors
+                if doc_embeddings is not None:
+                    del doc_embeddings
+                if cooc_matrix is not None:
+                    del cooc_matrix
+
+                # Clear unused GPU cache (does NOT remove model)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
+
+                logger.debug("Temporary GPU tensors cleared (model retained on VRAM)")
+
+            except Exception as cleanup_error:
+                logger.warning(f"GPU memory cleanup failed: {cleanup_error}")
 
 # === FACTORY PATTERN IMPLEMENTATION ===
 class TOCStrategyFactory:
@@ -213,9 +239,6 @@ class TOCGenerator:
         self.strategy = strategy
         self.bookmark_tree: List[BookmarkNode] = []
         
-        # Validate PDF file
-        
-        self._validate_pdf_file(pdf_path)
         # Initialize PDF reader
         self.reader = PdfReader(pdf_path)
         self.outlines = self.reader.outline
@@ -326,17 +349,28 @@ class TOCGenerator:
             return ""
     
     def get_section_text(self, start_page: int, end_page: Optional[int] = None) -> str:
-        """Extract text from page range."""
+        """Extract text from page range with optimized batch reading."""
         if start_page is None:
             return ""
         if end_page is None or end_page < start_page:
             end_page = start_page
         
-        text = ""
-        for page_num in range(start_page, min(end_page + 1, len(self.reader.pages) + 1)):
-            text += self.get_page_text(page_num)
+        # Optimization
+        page_range = range(start_page, min(end_page + 1, len(self.reader.pages) + 1))
+        texts = []
         
-        return text
+        for page_num in page_range:
+            try:
+                if page_num < 1 or page_num > len(self.reader.pages):
+                    continue
+                page = self.doc[page_num - 1]
+                page_text = page.get_text("text") or ""
+                texts.append(page_text)
+            except Exception as e:
+                logger.warning(f"Failed to extract text from page {page_num}: {e}")
+                continue
+        
+        return "".join(texts)  # Use join instead of += for better performance
     
     def process_node(self, node: BookmarkNode, next_page: Optional[int] = None, **strategy_kwargs):
         """Process a single node using the current strategy."""
@@ -497,53 +531,3 @@ class TOCGenerator:
         """
         strategy = TOCStrategyFactory.create_strategy(task_type, toc_config)
         return cls(pdf_path, strategy)
-
-# Usage Example and Testing
-def main():
-    """Main function to demonstrate TOC generator usage with enhanced features."""
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
-    # 📝 IMPORTANT: Replace this with your actual PDF path
-    PDF_PATH = "Python rat la co ban - Vo Duy Tuan.pdf"
-    
-    # Pre-flight check
-    if not Path(PDF_PATH).exists():
-        logger.error(f"PDF file not found: {PDF_PATH}")
-        logger.error("Please update the 'PDF_PATH' variable with a valid PDF file path.")
-        return
-    
-    print("\n" + "="*60)
-    print("🚀 ENHANCED TOC GENERATOR WITH TOKEN OPTIMIZATION 🚀")
-    print("="*60 + "\n")
-    
-    try:
-        # === TEST 1: Hybrid Cost-Effective Summarization ===
-        print("\n--- TEST 1: Hybrid Summarization with Cost Optimization ---")
-        
-        hybrid_config = {
-            "embedding_model": "Alibaba-NLP/gte-multilingual-base",
-        }
-        
-        toc_generator = TOCGenerator.create_with_config(
-            pdf_path=PDF_PATH,
-            task_type=TaskType.HYBRID_SUMMARIZE,
-            toc_config=hybrid_config
-        )
-        
-        # Generate intelligent TOC with auto-optimized token usage
-        toc_generator.generate_toc()
-        
-        # Export results
-        toc_generator.export_toc("table_of_contents.json")
-        
-        
-    
-    except Exception as e:
-        logger.error(f"An error occurred during testing: {e}", exc_info=True)
-    
-    print("\n" + "="*60)
-    print("🎉 ENHANCED TOC GENERATOR TESTS COMPLETED 🎉")
-    print("="*60 + "\n")
-
-if __name__ == "__main__":
-    main()

@@ -144,12 +144,16 @@ class TeacherAgent:
                 if not selected_document_id or not user_request:
                     logger.warning("Cần cung cấp document_id và yêu cầu người dùng.")
                     return {"answer": "Cần cung cấp document_id và yêu cầu người dùng."}
-                titles =  None
+                previous_titles =  None
+                previous_summary_content = None
+                previous_original_content = None
                 logger.info(f"Memory entries: {self.memory.entries}")
                 if self.enable_memory and self.memory:
                     for entry in reversed(self.memory.entries):
                         if entry.task_type == "summary" and entry.metadata.get("document_id") == selected_document_id:
-                            titles = entry.metadata.get("titles", None)
+                            previous_titles = entry.metadata.get("titles", None)
+                            previous_summary_content = entry.content
+                            previous_original_content = entry.metadata.get("original_content", None)
                             logger.info(f"Found matched_document from memory: {selected_document_id}")
                             break
                 
@@ -159,13 +163,15 @@ class TeacherAgent:
                     context_for_llm = self.memory.get_context_for_llm(
                         task_type="summary"
                     )
-                
-                summary, titles = self.summarization_service.generate_summary(
+
+                summary, original_content, titles = self.summarization_service.generate_summary(
                     user_request=user_request,
                     context_for_llm=context_for_llm,
                     username=username,
                     document_id=selected_document_id,
-                    titles=titles
+                    titles=previous_titles,
+                    summary_content=previous_summary_content,
+                    original_content=previous_original_content
                 )
                 
                 # Memory: Add agent response với metadata từ summary result
@@ -175,7 +181,8 @@ class TeacherAgent:
                         response=summary,
                         metadata={
                             "document_id": selected_document_id,
-                            "titles": titles
+                            "titles": titles,
+                            "original_content": original_content
                         },
                         task_type="summary"
                     )
@@ -487,53 +494,6 @@ class TeacherAgent:
             return ""
 
         return self.memory.get_context_for_llm(document_id=document_id, task_type=task_type)
-
-    def get_memory_statistics(self) -> dict:
-        """
-        Get statistics about memory
-        
-        Returns:
-            Dictionary with statistics
-        """
-        if not self.enable_memory or not self.memory:
-            return {}
-        
-        return self.memory.get_statistics()
-    
-    def clear_memory(self) -> None:
-        """Clear all memory"""
-        if self.enable_memory and self.memory:
-            self.memory.clear()
-            logger.info("Memory cleared")
-    
-    def save_memory(self, filepath: str) -> None:
-        """
-        Save memory to file
-        
-        Args:
-            filepath: Path to save file
-        """
-        if not self.enable_memory or not self.memory:
-            logger.warning("Memory not enabled, cannot save")
-            return
-        
-        self.memory.save_to_file(filepath)
-        logger.info(f"Memory saved to {filepath}")
-    
-    def load_memory(self, filepath: str) -> None:
-        """
-        Load memory from file
-        
-        Args:
-            filepath: Path to load file
-        """
-        if not self.enable_memory or not self.memory:
-            logger.warning("Memory not enabled, cannot load")
-            return
-        
-        self.memory.load_from_file(filepath)
-        logger.info(f"Memory loaded from {filepath}")
-        
 
 
 # --- Logic quyết định rẽ nhánh ---
