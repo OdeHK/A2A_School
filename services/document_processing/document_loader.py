@@ -6,6 +6,9 @@ from urllib.parse import urlparse
 from abc import ABC, abstractmethod
 from typing import List, Iterator, Literal, Optional, Dict, Any
 
+# Fix for Windows symlink permission issue with Hugging Face models
+os.environ['HF_HUB_DISABLE_SYMLINKS'] = '1'
+
 
 from langchain.schema.document import Document
 from langchain_community.document_loaders import PyMuPDFLoader
@@ -18,6 +21,9 @@ from typing import Union, BinaryIO
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.base_models import InputFormat
+import gc
+import torch
+
 logger = logging.getLogger(__name__)
 
 class DocumentType(str, Enum):
@@ -135,6 +141,14 @@ class DoclingPDFLoadingStrategy(LoadingStrategy):
     def strategy_name(self) -> str:
         return PDFLoaderType.DOCLING
     
+    def _clear_gpu_memory(self):
+        """Clear GPU memory after processing."""
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            gc.collect()
+            logger.info("GPU memory cleared")
+    
     def load_documents(self, source: Union[str, Path, BinaryIO], **kwargs) -> List[Document]:
         """
         Load PDF using Docling.
@@ -146,40 +160,48 @@ class DoclingPDFLoadingStrategy(LoadingStrategy):
         Returns:
             List[Document]: Loaded documents.
         """
-        logger.info(f"Loading PDF with Docling: {source}")
-        
-        doc = self.converter.convert(source).document
-        
-        # collect texts by page number
-        pages = defaultdict(list)
-        for text in doc.texts: 
-            if text.prov:  # provenance tells us page number
-                page_no = text.prov[0].page_no
-                pages[page_no].append(text.text)
+        try:
+            logger.info(f"Loading PDF with Docling: {source}")
+            
+            doc = self.converter.convert(source).document
+            
+            # collect texts by page number
+            pages = defaultdict(list)
+            for text in doc.texts: 
+                if text.prov:  # provenance tells us page number
+                    page_no = text.prov[0].page_no
+                    pages[page_no].append(text.text)
 
-        # total number of pages (highest page number seen)
-        total_pages = max(pages.keys())
+            # total number of pages (highest page number seen)
+            total_pages = max(pages.keys())
 
-        # build Document list
-        documents = []
-        for page_no in sorted(pages.keys()):
-            page_text = "\n".join(pages[page_no])
-            documents.append(
-                Document(
-                    page_content=page_text,
-                    metadata={
-                        "source": str(source),
-                        "page": page_no,
-                        "total_pages": total_pages,
-                    },
+            # build Document list
+            documents = []
+            for page_no in sorted(pages.keys()):
+                page_text = "\n".join(pages[page_no])
+                documents.append(
+                    Document(
+                        page_content=page_text,
+                        metadata={
+                            "source": str(source),
+                            "page": page_no,
+                            "total_pages": total_pages,
+                        },
+                    )
                 )
-            )
-                
-        return documents
+            
+            return documents
+        finally:
+            # Always clear GPU memory after processing
+            self._clear_gpu_memory()
+    
     def lazy_load_documents(self, source: Union[str, Path, BinaryIO], **kwargs) -> Iterator[Document]:
         """Lazily load PDF using Docling (yields from load)."""
         logger.info(f"Lazy loading PDF with Docling: {source}")
-        yield from self.load_documents(source, **kwargs)
+        try:
+            yield from self.load_documents(source, **kwargs)
+        finally:
+            self._clear_gpu_memory()
 
 class BeautifulSoupWebsiteLoadingStrategy(LoadingStrategy):
     """Strategy to load HTML pages with BeautifulSoup."""
@@ -223,6 +245,10 @@ class DoclingWebsiteLoadingStrategy(LoadingStrategy):
             pipeline_options (Optional[PdfPipelineOptions]): Docling pipeline options.
         """
         
+        # Suppress Docling warnings about clashing hyperlinks
+        docling_logger = logging.getLogger('docling')
+        docling_logger.setLevel(logging.ERROR)
+        
         self.converter = DocumentConverter(format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
         })
@@ -231,22 +257,36 @@ class DoclingWebsiteLoadingStrategy(LoadingStrategy):
     def strategy_name(self) -> str:
         return WebsiteLoaderType.DOCLING
 
+    def _clear_gpu_memory(self):
+        """Clear GPU memory after processing."""
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            gc.collect()
+            logger.info("GPU memory cleared")
 
     def load_documents(self, source: str, **kwargs) -> List[Document]:
-        logger.info(f"Loading website (Docling): {source}")
-        
-        result = self.converter.convert(source)
-        return [
-            Document(
-                page_content=result.document.export_to_markdown(),
-                metadata={
-                    "source": source,
-                },
-            )
-        ]
+        try:
+            logger.info(f"Loading website (Docling): {source}")
+            
+            result = self.converter.convert(source)
+            return [
+                Document(
+                    page_content=result.document.export_to_markdown(),
+                    metadata={
+                        "source": source,
+                    },
+                )
+            ]
+        finally:
+            # Always clear GPU memory after processing
+            self._clear_gpu_memory()
         
     def lazy_load_documents(self, source: str, **kwargs) -> Iterator[Document]:
-        yield from self.load_documents(source, **kwargs)
+        try:
+            yield from self.load_documents(source, **kwargs)
+        finally:
+            self._clear_gpu_memory()
 
     
 # === FACTORY PATTERN IMPLEMENTATION ===
@@ -337,7 +377,7 @@ class DocumentLoader:
                  raise RuntimeError("No loading strategy could be determined for the given source.")
         
         self._validate_source(source)
-        
+        logger.info(f"Using strategy: {self.strategy.strategy_name} to load documents.")
         logger.info(f"Loading documents from: {source}")
         return self.strategy.load_documents(source, **kwargs)
     
@@ -429,10 +469,10 @@ def main():
     
     # --- Test Setup ---
     # 📝 IMPORTANT: Replace this with the actual path to your PDF file.
-    YOUR_PDF_PATH = "lec06-slides.pdf"
+    YOUR_PDF_PATH = "example_data\\one_page_latex_document.pdf"
 
-    PDF_URL = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
-    HTML_URL = "https://en.wikipedia.org/wiki/Liverpool_F.C."
+    PDF_URL = "https://arxiv.org/pdf/1706.03762"
+    HTML_URL = "https://en.wikipedia.org/wiki/Cristiano_Ronaldo"
 
     # --- Pre-flight check for the local PDF file ---
     if not os.path.exists(YOUR_PDF_PATH):
@@ -445,29 +485,43 @@ def main():
     print("="*50 + "\n")
 
     try:
-        # === TEST 1: Auto-detect and load your LOCAL PDF file ===
-        print("\n--- TEST 1: Auto-detecting and loading a local PDF ---")
+        # # === TEST 1: Auto-detect and load your LOCAL PDF file ===
+        # print("\n--- TEST 1: Auto-detecting and loading a local PDF ---")
        
         auto_loader = DocumentLoader.create_with_config(
-            document_type=DocumentType.PDF,
-            loader_config={"pdf_loader_type": PDFLoaderType.DOCLING}
+            document_type=DocumentType.HTML,
+            loader_config={"website_loader_type": WebsiteLoaderType.DOCLING}
         )
-        documents = auto_loader.load(YOUR_PDF_PATH)
-        print(f"📄 Loaded {len(documents)} page(s) from your local PDF.")
+        documents = auto_loader.load(HTML_URL)
+        
+        # print(f"📄 Loaded {len(documents)} page(s) from your local PDF.")
         print(f"Content of first page (first 100 chars): '{documents[0].page_content[:100].strip()}...'")
-
-        # # === TEST 2: Auto-detect and load an HTML file from a URL ===
+        #print(documents)
+        logger.info("Completed TEST 2 successfully.")
+        with open("output.txt", "w", encoding="utf-8") as f:
+            for i, doc in enumerate(documents):
+                f.write(f"=== Document {i+1} ===\n")
+                f.write(doc.page_content.strip())
+                f.write("\n\n")  # cách nhau giữa các document
+        #=== TEST 2: Auto-detect and load an HTML file from a URL ===
         # print("\n--- TEST 2: Auto-detecting and loading a PDF from URL ---")
        
         # documents = auto_loader.load(PDF_URL)
         # print(f"📄 Loaded {len(documents)} page(s) from PDF URL.")
         # print(documents[0].page_content)
-        #print(f"Metadata: {documents[0].metadata}")
+        # print(f"Metadata: {documents[0].metadata}")
+        # logger.info("Completed TEST 2 successfully.")
         
+        
+        # documents = auto_loader.load(PDF_URL)
+        # print(f"📄 Loaded {len(documents)} page(s) from PDF URL.")
+        # print(documents[0].page_content)
+        # print(f"Metadata: {documents[0].metadata}")
+        # logger.info("Completed TEST 2 successfully.")
 
         # # === TEST 3: Load a PDF from a URL ===
         # print("\n--- TEST 3: Auto-detecting and loading an HTML webpage ---")
-        # documents = auto_loader.load(HTML_URL)
+        # documents = auto_loader.load(PDF_URL)
         # print(f"📄 Loaded {len(documents)} document(s) from HTML URL.")
         # print(documents[0].page_content)
         

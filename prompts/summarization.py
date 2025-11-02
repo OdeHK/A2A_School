@@ -99,18 +99,26 @@ Tạo ra một bản tóm tắt ngắn gọn, súc tích và chính xác bằng 
 </OBJECTIVE>
 
 <INPUT_SCHEMA>
-input_text: Một chuỗi văn bản cần được tóm tắt.
+original_content: Văn bản gốc cần được tóm tắt.
+summary_content: Bản tóm tắt trước đó (nếu có).
+user_request: Yêu cầu của người dùng (nếu có).
 </INPUT_SCHEMA>
 
 <INPUT>
-Văn bản cần tóm tắt:
-{input_text}
+Văn bản gốc:
+{original_content}
+
+Bản tóm tắt trước đó:
+{summary_content}
+
+Yêu cầu của người dùng:
+{user_request}
 </INPUT>
 
 <INSTRUCTIONS>
-Đọc và hiểu sâu nội dung, ý chính của input_text.
-Xác định các điểm quan trọng, các luận điểm cốt lõi.
-Viết lại các ý chính thành một đoạn văn ngắn gọn, mạch lạc bằng tiếng Việt.
+- Nếu `user_request` và `summary_content` đều rỗng, chỉ cần tạo một bản tóm tắt ngắn gọn từ `original_content`.
+- Nếu `user_request` không rỗng, sử dụng cả `original_content`, `summary_content`, và `user_request` để điều chỉnh bản tóm tắt theo phản hồi của người dùng.
+- Đảm bảo bản tóm tắt cuối cùng ngắn gọn, mạch lạc và giữ được ý nghĩa gốc của văn bản.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
@@ -121,13 +129,18 @@ Bản tóm tắt phải giữ được ý nghĩa gốc của văn bản.
 
 <EXAMPLE>
 <INPUT>
-Văn bản cần tóm tắt:
+Văn bản gốc:
 Trí tuệ nhân tạo (AI) đang thay đổi nhanh chóng nhiều lĩnh vực của cuộc sống, từ y tế, giáo dục đến giải trí. Các hệ thống AI có khả năng phân tích dữ liệu lớn, nhận dạng mẫu và đưa ra dự đoán với độ chính xác ngày càng cao. Mặc dù mang lại nhiều lợi ích to lớn, việc phát triển AI cũng đặt ra những thách thức về đạo đức, bảo mật và tác động đến thị trường lao động.
+
+Bản tóm tắt trước đó:
+Trí tuệ nhân tạo (AI) mang lại nhiều lợi ích cho các ngành như y tế, giáo dục nhờ khả năng phân tích dữ liệu và dự đoán, nhưng cũng tạo ra các thách thức về đạo đức, bảo mật và lao động.
+
+Yêu cầu của người dùng:
+Hãy làm cho bản tóm tắt ngắn gọn hơn.
 </INPUT>
 <OUTPUT>
-Trí tuệ nhân tạo (AI) mang lại nhiều lợi ích cho các ngành như y tế, giáo dục nhờ khả năng phân tích dữ liệu và dự đoán, nhưng cũng tạo ra các thách thức về đạo đức, bảo mật và lao động.
+AI mang lại lợi ích lớn cho y tế, giáo dục, nhưng cũng đặt ra thách thức về đạo đức và bảo mật.
 </OUTPUT>
 </EXAMPLE>
-"""
-)
+""")
 

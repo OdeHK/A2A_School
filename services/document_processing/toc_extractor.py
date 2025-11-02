@@ -16,8 +16,6 @@ from services.summarization.TOC_generator import TOCGenerator, BookmarkNode, Tas
 
 logger = logging.getLogger(__name__)
 
-
-
 @dataclass  
 class ContentItem:
     """Content item with corresponding TOC ID"""
@@ -73,7 +71,7 @@ class TOCExtractor:
     def __init__(self, 
                  content_strategy: str = "textrank_extract",
                  embedding_model: str = "Alibaba-NLP/gte-multilingual-base",
-                 cache_folder: str = "./model"):
+                 cache_folder: str = None):
         """
         Initialize TOC Extractor.
         
@@ -97,27 +95,39 @@ class TOCExtractor:
         logger.info(f"  - Embedding Model: {embedding_model}")
         logger.info(f"  - Mode: Separate TOC + Content files with ID mapping")
     
-    def extract_toc_and_content(self, pdf_path: str, document_id: str) -> TOCExtractionResult:
+    def extract_toc_and_content(self, pdf_path: str, document_id: str, document_content: Optional[str] = None) -> TOCExtractionResult:
         """
         Main method to extract both TOC structure and content.
         
         Args:
-            pdf_path: Path to PDF file
-            document_id: Optional document ID (auto-generated if not provided)
+            pdf_path: Path to PDF file or URL
+            document_id: Document ID
+            document_content: Optional pre-loaded content (for websites)
             
         Returns:
             TOCExtractionResult containing both structure and content
         """
         logger.info(f"Starting TOC extraction for: {pdf_path}")
         
-        # Validate PDF file
-        if not Path(pdf_path).exists():
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        # Check if it's a URL (website) or local PDF file
+        is_url = pdf_path.startswith("http://") or pdf_path.startswith("https://")
         
-        # STEP 1: Extract TOC structure using TOCGenerator
-        toc_generator = self._create_toc_generator(pdf_path)
-        bookmark_tree = toc_generator.generate_toc()
-
+        if is_url:
+            # For websites: Create simple full_document TOC
+            logger.info(f"Processing website URL: {pdf_path}")
+            return self._extract_toc_for_website(pdf_path, document_id, document_content)
+        else:
+            # For PDF files: Use full TOC extraction
+            logger.info(f"Processing PDF file: {pdf_path}")
+            
+            # Validate PDF file
+            if not Path(pdf_path).exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+            
+            # STEP 1: Extract TOC structure using TOCGenerator
+            toc_generator = self._create_toc_generator(pdf_path)
+            bookmark_tree = toc_generator.generate_toc()
+        
         #logger.info(f"Extracted: bookmark_tree {bookmark_tree}")
         
         # STEP 2: Convert to structured format with unique IDs
@@ -150,6 +160,64 @@ class TOCExtractor:
         result.document_id = document_id
         
         logger.info(f"Extraction completed: {len(toc_structure.sections)} sections, {len(content_data.content)} content items")
+        return result
+    def _extract_toc_for_website(self, url: str, document_id: str, document_content: Optional[str] = None) -> TOCExtractionResult:
+        """
+        Extract TOC for website URL - creates simple full_document structure.
+        
+        Args:
+            url: Website URL
+            document_id: Document ID
+            document_content: Optional pre-loaded content
+            
+        Returns:
+            TOCExtractionResult with simple full_document structure
+        """
+        logger.info(f"Creating simple TOC structure for website: {url}")
+        
+        # Create simple full_document section
+        section_id = f"toc_{uuid.uuid4().hex[:8]}"
+        toc_section = TableOfContentsSection(
+            section_id=section_id,
+            section_title="full_document",
+            parent_section_id=None,
+            level=1,
+            page_number=None,
+            children=[]  # No children for website
+        )
+        toc_sections = self._infer_page_ranges([toc_section]) # Calculate end_page for each section
+        toc_structure = TableOfContents(
+            document_id=document_id,
+            extraction_date=datetime.now(),
+            sections=toc_sections
+        )
+        
+        # Create content item for full document
+        content_text = document_content if document_content else "Website content"
+        
+        content_item = ContentItem(
+            id=section_id,  # Same ID as TOC section
+            title="full_document",
+            content=content_text,
+            page_number=None
+        )
+        
+        content_data = ContentData(
+            document_id=document_id,
+            extraction_date=datetime.now().isoformat(),
+            content=[content_item]
+        )
+        
+        # Create result
+        result = TOCExtractionResult(
+            pdf_path=url,
+            toc_structure=toc_structure,
+            content_data=content_data
+        )
+        
+        result.document_id = document_id
+        
+        logger.info(f"Website TOC extraction completed: 1 section (full_document)")
         return result
     
     def _create_toc_generator(self, pdf_path: str) -> TOCGenerator:
