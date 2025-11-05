@@ -94,7 +94,7 @@ MongoDB Atlas Dashboard
 
 #### Bước 3: Create `.env` file
 ```env
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://<YOUR_USERNAME>:<YOUR_PASSWORD>@<YOUR_CLUSTER>.mongodb.net/?retryWrites=true&w=majority
 MONGODB_DATABASE_NAME=agent_for_teacher
 ```
 
@@ -139,7 +139,7 @@ GOOGLE_API_KEY=your_google_api_key_here
 # MONGODB CONFIGURATION
 # ========================================
 # Option 1: MongoDB Atlas (Cloud)
-# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+# MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
 
 # Option 2: Local MongoDB
 # MONGODB_URI=mongodb://localhost:27017/
@@ -199,7 +199,7 @@ cp .env.example .env
 MONGODB_URI=mongodb://localhost:27017/
 
 # OR Atlas Cloud
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/
 
 # OR Docker
 MONGODB_URI=mongodb://localhost:27017/

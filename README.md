@@ -115,7 +115,7 @@ LOGS_DIR=./logs
 ```
 
 **Lưu ý về MongoDB URI:**
-- Để sử dụng MongoDB Atlas (cloud): `mongodb+srv://username:password@cluster.mongodb.net/`
+- Để sử dụng MongoDB Atlas (cloud): `mongodb+srv://<username>:<password>@<cluster>.mongodb.net/`
 - Để sử dụng MongoDB local: `mongodb://username:password@localhost:27017/`
 
 ## 🚀 Chạy ứng dụng
