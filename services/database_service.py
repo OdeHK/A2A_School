@@ -7,7 +7,7 @@ from datetime import datetime
 from services.models import (
         DocumentMetadata,
         TableOfContents,
-        TocSection
+        TableOfContentsSection
 )
 import dns.resolver
 from pymongo.server_api import ServerApi
@@ -47,19 +47,16 @@ class DatabaseService:
             ConnectionFailure: If database connection fails
         """
         try:
-            # Configure DNS resolver
-            dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
-            dns.resolver.default_resolver.nameservers = ['8.8.8.8', '1.1.1.1']  
-
             # Get MongoDB URI from settings
             uri = self.settings.mongodb_uri
             database_name = self.settings.mongodb_database_name
-            
-            # Create a new client and connect to the server
-            self.client = MongoClient(uri, server_api=ServerApi('1'))
-            
-            # Test connection
-            self.client.admin.command('ismaster')
+
+            # Create a new client and connect to the server with a short selection timeout
+            # Avoid forcing DNS resolver changes here (can break environments like CI or containers).
+            self.client = MongoClient(uri, server_api=ServerApi('1'), serverSelectionTimeoutMS=5000)
+
+            # Test connection using a lightweight ping (avoids deprecated 'ismaster')
+            self.client.admin.command('ping')
 
             self.db = self.client.get_database(database_name)
             self.users_collection = self.db.get_collection("users")
