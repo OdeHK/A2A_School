@@ -17,7 +17,8 @@ class ModelConstants:
 
     }
     
-    DEFAULT_LLM_PROVIDER = "nvidia"
+    # Default provider: switch to Google GenAI to avoid NVIDIA 403 for users without access
+    DEFAULT_LLM_PROVIDER = "google_gen_ai"
 
     # === Default models cho từng provider ===
     DEFAULT_MODELS = {

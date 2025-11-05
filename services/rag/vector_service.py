@@ -75,6 +75,52 @@ class VectorService:
             self.vectorstore.add_documents(documents)
         return self.vectorstore
     
+    def add_documents_with_embeddings(self, documents: List[Document], embeddings: List[List[float]]):
+        """
+        Thêm documents với embeddings đã tính sẵn (tránh re-embed!)
+        
+        Args:
+            documents: List of Document objects
+            embeddings: Pre-computed embeddings (same length as documents)
+        """
+        if not self.vectorstore:
+            self.init_vectorstore()
+        
+        if len(documents) != len(embeddings):
+            raise ValueError(f"Documents ({len(documents)}) and embeddings ({len(embeddings)}) must have same length!")
+        
+        # ChromaDB has max batch size limit (~5461)
+        max_batch_size = 5000  # Safe limit
+        
+        # Process in batches
+        total_batches = (len(documents) + max_batch_size - 1) // max_batch_size
+        
+        for batch_idx in range(0, len(documents), max_batch_size):
+            batch_docs = documents[batch_idx:batch_idx + max_batch_size]
+            batch_embs = embeddings[batch_idx:batch_idx + max_batch_size]
+            
+            # Extract data
+            texts = [doc.page_content for doc in batch_docs]
+            metadatas = [doc.metadata for doc in batch_docs]
+            
+            # Generate IDs
+            import uuid
+            ids = [str(uuid.uuid4()) for _ in range(len(batch_docs))]
+            
+            # Direct insert to ChromaDB (no re-embedding!)
+            self.vectorstore._collection.add(
+                embeddings=batch_embs,
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids
+            )
+            
+            current_batch = (batch_idx // max_batch_size) + 1
+            logger.info(f"✅ Batch {current_batch}/{total_batches}: Added {len(batch_docs)} documents (no re-embed!)")
+        
+        logger.info(f"✅ Total: Added {len(documents)} documents with pre-computed embeddings!")
+        return self.vectorstore
+    
     def similarity_search(self, query: str, k: int = 4, filter: Optional[dict] = None):
         """
         Tìm kiếm tài liệu tương tự với khả năng lọc theo metadata.

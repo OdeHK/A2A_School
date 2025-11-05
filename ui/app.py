@@ -1,58 +1,57 @@
 import sys
+import os
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+import time
 import gradio as gr
 from typing import List
 import logging
-import os
+from datetime import datetime
+
+# Import our services
 from services.ui_integration_service import UIIntegrationService
 
+# Import new utilities
+from utils.performance import measure_time, Timer, get_performance_report
+from utils.error_handler import ErrorHandler
+from models.responses import TextResponse, FileDownloadResponse, ErrorResponse
+from models.session import SessionState
+from config.exceptions import ValidationError, AuthenticationError
 
-def setup_logging():
-    """Setup logging with file and console handlers"""
-    # Remove all existing handlers
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-        
-    # Create handlers
-    log_file_path = os.path.abspath('app.log')
-    file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
-    console_handler = logging.StreamHandler(sys.stdout)
-    
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
-    )
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    # Set level
-    file_handler.setLevel(logging.INFO)
-    console_handler.setLevel(logging.INFO)
-    
-    # Add handlers to root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-    
-    return logging.getLogger("teacher_for_agent")
-
-logger = setup_logging()
-logger.info(f"Logging initialized. Log file: {os.path.abspath('ui/app.log')}")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize the UI integration service
 ui_service = UIIntegrationService()
 
 # Function to process uploaded document and add new URL
+@measure_time("document_upload")
 def process_uploaded_document(file_path: str, session_state: dict):
     """Process the selected document through RAG pipeline"""
     try:
-        user_name = session_state.get("user_name", "default_user")
-        status_msg = ui_service.process_uploaded_document(file_path, user_name)
-        logger.info(f"Document processing status: {status_msg}")
+        with Timer("extract_username"):
+            user_name = session_state.get("user_name", "default_user")
+        
+        with Timer("process_document_core"):
+            status_msg = ui_service.process_uploaded_document(file_path, user_name)
+        
+        logger.info(f"✅ Document processing completed: {status_msg}")
         return status_msg
+        
     except Exception as e:
-        error_msg = f"Error processing document: {str(e)}"
-        logger.error(error_msg)
+        error_msg, is_critical = ErrorHandler.handle_error(e, {
+            "operation": "process_uploaded_document",
+            "user": session_state.get("user_name"),
+            "file_path": file_path
+        })
         return error_msg
     
 def add_url_and_clear(new_url, current_file_list: List):
@@ -78,12 +77,12 @@ def convert_file_list_to_checkbox(file_list: List) -> gr.CheckboxGroup:
 
 def update_file_list_choices(session_state: dict) -> gr.CheckboxGroup:
     """Get the current list of files for the user"""
-
-    user_name = session_state.get("user_name", "default_user")
-    current_files = ui_service.get_user_files(user_name)
-    file_list_checkbox = convert_file_list_to_checkbox(current_files)
-    logger.info(f"Current files for {user_name}: {current_files}")
-    return file_list_checkbox
+    with Timer("get_user_files"):
+        user_name = session_state.get("user_name", "default_user")
+        current_files = ui_service.get_user_files(user_name)
+        file_list_checkbox = convert_file_list_to_checkbox(current_files)
+        logger.info(f"Current files for {user_name}: {current_files}")
+        return file_list_checkbox
 
 def handle_single_selection(selected_items: List[str]) -> List[str]:
     """Đảm bảo chỉ có thể chọn một nguồn duy nhất"""
@@ -100,8 +99,9 @@ def handle_document_selection(selected_items: List[str], session_state: dict):
         if selected_items and len(selected_items) > 0:
             selected_filename = selected_items[0]  # Get the first (and only) selected item
             
-            # Find document_id using ui_service
-            document_id, status_msg = ui_service.find_document_id_by_filename(user_name, selected_filename)
+            with Timer("find_document_id"):
+                # Find document_id using ui_service
+                document_id, status_msg = ui_service.find_document_id_by_filename(user_name, selected_filename)
             
             logger.info(f"Document selection status: {status_msg}")
             
@@ -117,8 +117,11 @@ def handle_document_selection(selected_items: List[str], session_state: dict):
             
             return "Chưa chọn tài liệu nào", updated_session_state
     except Exception as e:
-        error_msg = f"Error in document selection: {str(e)}"
-        logger.error(error_msg)
+        error_msg, _ = ErrorHandler.handle_error(e, {
+            "operation": "document_selection",
+            "user": user_name,
+            "selected_items": selected_items
+        })
         return error_msg, session_state
 
 
@@ -126,21 +129,25 @@ def handle_document_selection(selected_items: List[str], session_state: dict):
 def on_loader_change(loader_value):
     """Handle loader dropdown change"""
     try:
-        status_msg = ui_service.update_loader_strategy(loader_value)
-        logger.info(f"Loader change status: {status_msg}")
+        with Timer("update_loader"):
+            status_msg = ui_service.update_loader_strategy(loader_value)
+        logger.info(f"✅ Loader change status: {status_msg}")
         return loader_value
     except Exception as e:
-        logger.error(f"Error in on_loader_change: {str(e)}")
+        error_msg, _ = ErrorHandler.handle_error(e)
+        logger.error(error_msg)
         return loader_value
 
 def on_chunker_change(chunker_value):
     """Handle chunker dropdown change"""
     try:
-        status_msg = ui_service.update_chunker_strategy(chunker_value)
-        logger.info(f"Chunker change status: {status_msg}")
+        with Timer("update_chunker"):
+            status_msg = ui_service.update_chunker_strategy(chunker_value)
+        logger.info(f"✅ Chunker change status: {status_msg}")
         return chunker_value
     except Exception as e:
-        logger.error(f"Error in on_chunker_change: {str(e)}")
+        error_msg, _ = ErrorHandler.handle_error(e)
+        logger.error(error_msg)
         return chunker_value
 
 # Function to handle chat input and return response
@@ -167,7 +174,7 @@ def handle_chat_input(chat_history, session_state: dict):
         chat_history (List[gr.ChatMessage]): The current chat history.
         session_state (dict): Session state containing user information.
     Returns:
-        List[gr.ChatMessage]: Updated chat history
+        Tuple[List[gr.ChatMessage], gr.File]: Updated chat history and file component
 
     """
     # Get the last user input from chat history
@@ -176,38 +183,94 @@ def handle_chat_input(chat_history, session_state: dict):
     selected_document_id = session_state.get("selected_document_id")
     try:
         response = ui_service.handle_chat_query(user_input, chat_history, user_name, selected_document_id)
-        chat_history.append(gr.ChatMessage(role="assistant", content=response))
-        return chat_history
+        
+        # Check if response contains file download marker
+        if response.startswith("FILE_DOWNLOAD:"):
+            file_path = response.replace("FILE_DOWNLOAD:", "").strip()
+            chat_history.append(gr.ChatMessage(role="assistant", content="✅ File Word đã được tạo xong! Click vào file bên dưới để tải xuống."))
+            # Return file with visible=True
+            return chat_history, gr.File(value=file_path, visible=True, label="📥 Tải xuống file Word")
+        else:
+            chat_history.append(gr.ChatMessage(role="assistant", content=response))
+            # Return hidden file component
+            return chat_history, gr.File(visible=False, label="📥 Tải xuống file Word")
     except Exception as e:
         error_msg = f"Error in chat: {str(e)}"
         logger.error(error_msg)
         chat_history.append(gr.ChatMessage(role="assistant", content=f"🤖 Xin lỗi, đã có lỗi xảy ra: {error_msg}"))
-        return chat_history
+        return chat_history, gr.File(visible=False, label="📥 Tải xuống file Word")
+
+def update_download_file(file_path):
+    """Update the download file component based on the file path.
+    
+    Args:
+        file_path: Path to the file to download, or None if no file
+        
+    Returns:
+        Updated gr.File component
+    """
+    if file_path:
+        return gr.File(value=file_path, visible=True, label="📥 Tải xuống file Word")
+    else:
+        return gr.File(value=None, visible=False, label="📥 Tải xuống file Word")
 
 # Function to handle Google Authentication
-def handle_google_authentication(session_state: dict) -> gr.Button:
+def handle_google_authentication():
     """Handle Google Authentication and open sign-in website."""
     try:
-        user_name = session_state.get("user_name")
-        assert user_name is not None, "User name not found in session state"
-       
-        # Get authentication result with user name
-        auth_result, google_account_name = ui_service.open_sign_in_website(username=user_name)
+        # Get authentication result with user name (force re-auth to allow account switching)
+        auth_result, user_name = ui_service.open_sign_in_website(force_reauth=True)
         logger.info("Google authentication process completed.")
 
         # Check if authentication was successful
         if auth_result:
-            return gr.Button(value=google_account_name, interactive=False)
+            gr.Info(message=f"Đăng nhập thành công với tài khoản: {user_name}", duration=5, title="✅ Thành công")
+            return (
+                gr.Button(value=user_name, interactive=False, variant="secondary"),  # Login button
+                gr.Button(value="Đăng xuất Google", visible=True, variant="secondary")  # Logout button
+            )
         else:
             # Authentication failed
             logger.error(f"Authentication failed: {auth_result}")
             gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
-            return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+            return (
+                gr.Button(value="Đăng nhập tài khoản Google", interactive=True, variant="primary"),
+                gr.Button(visible=False)
+            )
             
     except Exception as e:
         logger.error(f"Error during Google authentication: {str(e)}")
         gr.Info(message="Đăng nhập không thành công, vui lòng thử lại sau.", duration=5, title="Lỗi đăng nhập")
-        return gr.Button(value="Đăng nhập tài khoản Google", interactive=True)
+        return (
+            gr.Button(value="Đăng nhập tài khoản Google", interactive=True, variant="primary"),
+            gr.Button(visible=False)
+        )
+
+def handle_google_logout():
+    """Handle Google Logout."""
+    try:
+        success, message = ui_service.logout_google()
+        
+        if success:
+            gr.Info(message="Đã đăng xuất Google. Có thể đăng nhập tài khoản khác.", duration=5, title="✅ Đăng xuất")
+            return (
+                gr.Button(value="Đăng nhập tài khoản Google", interactive=True, variant="primary"),  # Login button
+                gr.Button(visible=False)  # Logout button (hidden)
+            )
+        else:
+            gr.Info(message=f"Lỗi: {message}", duration=5, title="❌ Lỗi")
+            return (
+                gr.Button(value="Đăng nhập tài khoản Google", interactive=True, variant="primary"),
+                gr.Button(visible=False)
+            )
+            
+    except Exception as e:
+        logger.error(f"Error during Google logout: {str(e)}")
+        gr.Info(message="Lỗi khi đăng xuất", duration=5, title="❌ Lỗi")
+        return (
+            gr.Button(value="Đăng nhập tài khoản Google", interactive=True, variant="primary"),
+            gr.Button(visible=False)
+        )
 
 def authenticate(username, password):
     """
@@ -231,6 +294,68 @@ def authenticate(username, password):
             logger.info("Used fallback admin credentials")
             return True
         return False
+
+def register_new_user(username, password, confirm_password, email, full_name):
+    """
+    Register a new user.
+    
+    Returns:
+        Tuple of (success_html, error_html, clear_fields...)
+    """
+    try:
+        # Validation
+        if not username or len(username) < 3:
+            return (
+                "",
+                "❌ Username phải có ít nhất 3 ký tự",
+                username, password, confirm_password, email, full_name
+            )
+        
+        if not password or len(password) < 6:
+            return (
+                "",
+                "❌ Password phải có ít nhất 6 ký tự",
+                username, password, confirm_password, email, full_name
+            )
+        
+        if password != confirm_password:
+            return (
+                "",
+                "❌ Password không khớp",
+                username, "", "", email, full_name
+            )
+        
+        if email and "@" not in email:
+            return (
+                "",
+                "❌ Email không hợp lệ",
+                username, password, confirm_password, email, full_name
+            )
+        
+        # Register user
+        success, message = ui_service.register_user(username, password, email, full_name)
+        
+        if success:
+            logger.info(f"User {username} registered successfully")
+            return (
+                f"✅ {message}",
+                "",
+                "", "", "", "", ""  # Clear all fields
+            )
+        else:
+            return (
+                "",
+                f"❌ {message}",
+                username, password, confirm_password, email, full_name
+            )
+            
+    except Exception as e:
+        logger.error(f"Error during registration: {str(e)}")
+        return (
+            "",
+            f"❌ Lỗi hệ thống: {str(e)}",
+            username, password, confirm_password, email, full_name
+        )
 
 def save_user_name(request: gr.Request):
     """Save the authenticated user's name for session tracking."""
@@ -306,10 +431,16 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
             with gr.Row(equal_height=True):
                 user_input_textbox = gr.Textbox(scale=5, show_label=False, placeholder="Nhập yêu cầu của bạn...")
                 input_submit_btn = gr.Button("Gửi", scale=1, variant="primary")
+            
+            # File download component (hidden by default)
+            download_file = gr.File(label="📥 Tải xuống file Word", visible=False, type="filepath")
 
         with gr.Column(scale=1):
             with gr.Tab("Công cụ"):
-                google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google")
+                google_auth_btn = gr.Button(value="Đăng nhập tài khoản Google", variant="primary")
+                google_logout_btn = gr.Button(value="Đăng xuất Google", variant="secondary", visible=False)
+                gr.Markdown("---")
+                gr.Markdown("💡 **Ghi chú:** Nếu muốn đổi tài khoản Google, hãy đăng xuất trước rồi đăng nhập lại.")
         
     # WHen loading the app,
     demo.load(
@@ -356,7 +487,7 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     ).then(
         fn=handle_chat_input,
         inputs=[chatbot, session_state],
-        outputs=[chatbot]
+        outputs=[chatbot, download_file]
     )
 
     input_submit_btn.click(
@@ -366,14 +497,21 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     ).then(
         fn=handle_chat_input,
         inputs=[chatbot, session_state],
-        outputs=[chatbot]
+        outputs=[chatbot, download_file]
     )
 
     # Sign in to Google
     google_auth_btn.click(
         fn=handle_google_authentication,
-        inputs=[session_state],
-        outputs=[google_auth_btn]
+        inputs=[],
+        outputs=[google_auth_btn, google_logout_btn]
+    )
+    
+    # Sign out from Google
+    google_logout_btn.click(
+        fn=handle_google_logout,
+        inputs=[],
+        outputs=[google_auth_btn, google_logout_btn]
     )
 
     # Thêm event handlers cho dropdowns
@@ -390,11 +528,71 @@ with gr.Blocks(fill_width=True, theme=gr.themes.Soft()) as demo: #type: ignore
     )
             
 if __name__ == "__main__":
-
+    # Create registration interface
+    with gr.Blocks(theme=gr.themes.Soft()) as register_demo:
+        gr.Markdown("# 📝 Đăng ký tài khoản mới")
+        gr.Markdown("Tạo tài khoản để sử dụng Trợ lý AI cho giảng viên")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                pass  # Empty column for centering
+            
+            with gr.Column(scale=2):
+                reg_username = gr.Textbox(label="👤 Tên đăng nhập *", placeholder="Ít nhất 3 ký tự")
+                reg_email = gr.Textbox(label="📧 Email", placeholder="email@example.com (tùy chọn)")
+                reg_full_name = gr.Textbox(label="📛 Họ và tên", placeholder="Nguyễn Văn A (tùy chọn)")
+                reg_password = gr.Textbox(label="🔒 Mật khẩu *", placeholder="Ít nhất 6 ký tự", type="password")
+                reg_confirm_password = gr.Textbox(label="🔒 Xác nhận mật khẩu *", placeholder="Nhập lại mật khẩu", type="password")
+                
+                with gr.Row():
+                    register_btn = gr.Button("Đăng ký", variant="primary", scale=2)
+                    cancel_btn = gr.Button("Hủy", scale=1)
+                
+                success_msg = gr.Markdown(visible=True)
+                error_msg = gr.Markdown(visible=True)
+                
+                gr.Markdown("---")
+                gr.Markdown("**Lưu ý:** Các trường có dấu * là bắt buộc")
+            
+            with gr.Column(scale=1):
+                pass  # Empty column for centering
+        
+        # Register button handler
+        register_btn.click(
+            fn=register_new_user,
+            inputs=[reg_username, reg_password, reg_confirm_password, reg_email, reg_full_name],
+            outputs=[success_msg, error_msg, reg_username, reg_password, reg_confirm_password, reg_email, reg_full_name]
+        )
+    
     try:
+        # Launch both interfaces
         demo.queue()
-        demo.launch(auth=authenticate, share=True)  # Enable authentication with a simple username/password prompt
+        
+        # Check if user wants to register (via command line argument or environment variable)
+        import sys
+        if "--register" in sys.argv or len(sys.argv) > 1 and sys.argv[1] == "register":
+            logger.info("Launching registration interface...")
+            register_demo.launch(share=False)
+        else:
+            logger.info("=" * 80)
+            logger.info("🚀 A2A_SCHOOL APPLICATION STARTED")
+            logger.info("=" * 80)
+            logger.info(f"📅 Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info("=" * 80)
+            
+            demo.launch(auth=authenticate, share=True)
+            
     finally:
-        logger.info("Shutting down the application...")
-        ui_service.cleanup()  # Perform any necessary cleanup actions
-        logger.info("Application has been shut down gracefully.")
+        logger.info("\n" + "=" * 80)
+        logger.info("🛑 SHUTTING DOWN APPLICATION")
+        logger.info("=" * 80)
+        
+        # Print performance report
+        logger.info("\n" + get_performance_report())
+        
+        logger.info("\n" + "=" * 80)
+        logger.info("🧹 Cleaning up resources...")
+        ui_service.cleanup()
+        logger.info("✅ Application has been shut down gracefully.")
+        logger.info(f"📅 End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info("=" * 80)

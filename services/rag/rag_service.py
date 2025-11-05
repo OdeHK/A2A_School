@@ -58,9 +58,9 @@ class RagService:
         if not hasattr(self.vector_service, 'vectorstore') or self.vector_service.vectorstore is None:
             self.vector_service.init_vectorstore()
         
-        # Intialize LLM service
+        # Intialize LLM service (use default provider from constants/settings)
         if llm_service is None:
-            llm_service = LLMService(llm_type="nvidia")
+            llm_service = LLMService()
         self.llm_service = llm_service
     
 

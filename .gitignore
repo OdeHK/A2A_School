@@ -4,6 +4,11 @@ demo/
 temp_data/
 .gradio/
 
+# OAuth and API credentials - NEVER COMMIT THESE!
+client_secret*.json
+token.json
+.env
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
