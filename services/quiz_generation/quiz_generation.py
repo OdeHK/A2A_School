@@ -1,6 +1,7 @@
 from typing import TypedDict, Dict, Any, List, Optional, Tuple
 from pydantic import Field
 from services.rag.rag_service import RagService
+from services.llm_service import LLMService
 from services.database_service import DatabaseService
 from services.models import PlanTaskOutputList, QuizQuestion, QuizQuestionOutput, TableOfContentsSection
 from langchain.prompts import ChatPromptTemplate
@@ -26,12 +27,12 @@ class CustomPydanticOutputParser(PydanticOutputParser):
             # If not, wrap it in triple backticks
             text = f"```json\n{text}\n```"
 
-        # Add double backslashes in latex expressions
-        text = re.sub(
-            r'\$(.+?)\$',
-            lambda m: "$" + m.group(1).replace("\\", "\\\\") + "$",
-            text
-        )
+        # # Add double backslashes in latex expressions
+        # text = re.sub(
+        #     r'\$(.+?)\$',
+        #     lambda m: "$" + m.group(1).replace("\\", "\\\\") + "$",
+        #     text
+        # )
         return super().parse(text)
 
 # ====== Graph State =========
@@ -48,9 +49,17 @@ class QuizGenerationState(TypedDict):
 class QuizGenerationService:
     """Main service điều phối việc sinh Quiz sử dụng LangGraph"""
 
-    def __init__(self, rag_service: RagService, database_service: DatabaseService):
+    def __init__(self, rag_service: RagService, llm_service: LLMService, database_service: DatabaseService):
+        """
+        Initialize Quiz Generation Service.
+        
+        Args:
+            rag_service: RAG service for document retrieval
+            llm_service: LLM service for question generation
+            database_service: Database service for storing quiz sets
+        """
         self.rag_service = rag_service
-        self.llm_service = rag_service.llm_service
+        self.llm_service = llm_service
         self.vector_service = rag_service.vector_service
         self.database_service = database_service
         self.workflow = self._create_workflow()
@@ -106,7 +115,7 @@ class QuizGenerationService:
             logger.info(f"User request: {state['user_request']}")
             
             toc_data = state["detail_table_of_contents"]
-            llm = self.rag_service.llm_service.llm
+            llm = self.llm_service.llm
             
             # Convert ToC sections to string for LLM processing
             toc_string = QuizGenerationService._convert_toc_to_string(toc_data)
@@ -227,7 +236,7 @@ class QuizGenerationService:
                     logger.info(f"Batch invoking LLM with {len(batch_prompt_inputs)} prompts")
                     
                     # Create chain with parser
-                    chain = quiz_generation_prompt | self.rag_service.llm_service.llm | quiz_parser
+                    chain = quiz_generation_prompt | self.llm_service.llm | quiz_parser
                     
                     # Batch invoke
                     batch_results = chain.batch(batch_prompt_inputs)

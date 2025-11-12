@@ -7,6 +7,7 @@ from httplib2 import Http
 from oauth2client import client, file, tools
 
 from services.database_service import DatabaseService
+from services.llm_service import LLMService
 from services.quiz_generation.quiz_generation import QuizGenerationService
 from services.summarization.summarization import SummarizationService
 from services.quiz_generation.converter import QuizToGoogleFormConverter
@@ -14,7 +15,7 @@ from services.rag.rag_service import RagService
 from services.document_processing.document_chunker import ChunkingStrategyType
 from services.document_processing.document_management_service import DocumentManagementService
 from services.agent.agent_service import TeacherAgent
-from config.constants import StorageConstants
+from config.constants import StorageConstants, ModelConstants
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +28,54 @@ class UIIntegrationService:
     def __init__(self):
         """Initialize the UI integration service."""
         # Initialize services in correct order
+        self.llm_service = self._initialize_llm_service(llm_type=ModelConstants.DEFAULT_LLM_PROVIDER,
+                                                       model_name=ModelConstants.DEFAULT_MODELS[ModelConstants.DEFAULT_LLM_PROVIDER],
+                                                       temperature=0.7,
+                                                       top_p=1.0,
+                                                       max_completion_tokens=100000)
         self.rag_service = self._initialize_rag_service()
         self.database_service = self._initialize_database_service()
         self.doc_management_service = self._initialize_document_management_service(database_service=self.database_service)
-        self.quiz_generation_service = self._initialize_quiz_generation_service(rag_service=self.rag_service, database_service=self.database_service)
+        self.quiz_generation_service = self._initialize_quiz_generation_service(llm_service=self.llm_service, rag_service=self.rag_service, database_service=self.database_service)
         self.summarization_service = self._initialize_summarization_service(rag_service=self.rag_service, document_management_service=self.doc_management_service)
         self.agent_service = self._initialize_agent_service(rag_service=self.rag_service, 
                                                           quiz_generation_service=self.quiz_generation_service,
                                                           document_management_service=self.doc_management_service,
                                                           summarization_service=self.summarization_service,
                                                           database_service=self.database_service)
+
+    def _initialize_llm_service(
+        self,
+        llm_type: str,
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_completion_tokens: Optional[int] = None
+    ) -> LLMService:
+        """
+        Initialize or reinitialize the LLM service with specified configuration.
+        
+        Args:
+            llm_type: Provider type (nvidia, google_gen_ai)
+            model_name: Model name to use
+            temperature: Temperature parameter for generation
+            top_p: Top P parameter for generation
+            max_completion_tokens: Maximum completion tokens
+        """
+        try:
+            llm_service = LLMService(
+                llm_type=llm_type,
+                model_name=model_name,
+                temperature=temperature,
+                top_p=top_p,
+                max_completion_tokens=max_completion_tokens
+            )
+            
+            logger.info(f"LLM service initialized with provider: {llm_service.llm_type}")
+            return llm_service
+        except Exception as e:
+            logger.error(f"Error initializing LLM service: {str(e)}")
+            raise e
 
     def _initialize_rag_service(self, chunker_strategy: str = "ONE_PAGE") -> RagService:
         """
@@ -55,7 +94,7 @@ class UIIntegrationService:
             
             strategy = strategy_mapping.get(chunker_strategy, ChunkingStrategyType.ONE_PAGE_PER_CHUNK)
             
-            rag_service = RagService()
+            rag_service = RagService(llm_service=self.llm_service)
             rag_service.update_chunking_strategy(strategy)
             
             logger.info(f"RAG service initialized with strategy: {chunker_strategy}")
@@ -90,12 +129,16 @@ class UIIntegrationService:
             logger.error(f"Error initializing document management service: {str(e)}") 
             raise e
 
-    def _initialize_quiz_generation_service(self, rag_service: RagService, database_service: DatabaseService):
+    def _initialize_quiz_generation_service(self, llm_service: LLMService, rag_service: RagService, database_service: DatabaseService):
         """
         Initialize or reinitialize the quiz generation service.
         """
         try:
-            quiz_generation_service = QuizGenerationService(rag_service=rag_service, database_service=database_service)
+            quiz_generation_service = QuizGenerationService(
+                rag_service=rag_service, 
+                llm_service=llm_service,
+                database_service=database_service
+            )
             logger.info("Quiz generation service initialized")
             return quiz_generation_service
         except Exception as e:
@@ -449,6 +492,8 @@ class UIIntegrationService:
             Service status information
         """
         return {
+            "llm_service_initialized": self.llm_service is not None,
+            "llm_service_provider": self.llm_service.llm_type if self.llm_service else None,
             "rag_service_initialized": self.rag_service is not None,
             "doc_management_service_initialized": self.doc_management_service is not None,
             "quiz_generation_service_initialized": self.quiz_generation_service is not None,
@@ -495,6 +540,7 @@ class UIIntegrationService:
         self.delete_temp_folder_for_all_users()
         self.database_service.remove_quizsets()
         self.database_service.close_connection()
+        del self.llm_service
         del self.rag_service
         del self.doc_management_service
         del self.quiz_generation_service

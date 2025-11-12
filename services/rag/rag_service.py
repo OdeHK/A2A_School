@@ -33,7 +33,8 @@ class RagService:
         
         Args:
             loader: Document loader instance
-            chunker: Document chunker instance  
+            chunker: Document chunker instance
+            llm_service: LLM service instance
             vector_service: Vector service instance
             embedding_type: Type of embedding to use
         """
@@ -58,7 +59,7 @@ class RagService:
         if not hasattr(self.vector_service, 'vectorstore') or self.vector_service.vectorstore is None:
             self.vector_service.init_vectorstore()
         
-        # Intialize LLM service
+        # Initialize LLM service (now received from outside or create default)
         if llm_service is None:
             llm_service = LLMService(llm_type="nvidia")
         self.llm_service = llm_service

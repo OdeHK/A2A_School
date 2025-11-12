@@ -37,13 +37,12 @@ def get_plan_prompt() -> ChatPromptTemplate:
         "{toc}"
         )
     ])
-
 def get_quiz_generation_prompt() -> ChatPromptTemplate:
     """
     Prompt template for generating quiz questions from content.
-    
     Returns:
         ChatPromptTemplate: Prompt for generating quiz questions based on retrieved context
+    
     """
     return ChatPromptTemplate.from_messages([
         SystemMessagePromptTemplate.from_template(

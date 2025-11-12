@@ -12,26 +12,51 @@ from config.settings import get_settings
 class LLMService:
     """Quản lý việc khởi tạo và sử dụng LLM thông qua LangChain"""
     
-    def __init__(self, llm_type: Optional[str] = None):
+    def __init__(
+        self, 
+        llm_type: str = ModelConstants.DEFAULT_LLM_PROVIDER,
+        model_name: str = ModelConstants.DEFAULT_MODELS[ModelConstants.DEFAULT_LLM_PROVIDER],
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        max_completion_tokens: int = 100000
+    ):
         """
         Initialize LLM Service
         
         Args:
             llm_type: Provider type (nvidia, google_gen_ai), nếu None dùng default
-        """
-        self.llm_type = llm_type or ModelConstants.DEFAULT_LLM_PROVIDER
+            model_name: Model name to use, nếu None dùng default cho provider
+            temperature: Temperature parameter for generation
+            top_p: Top P parameter for generation
+            max_completion_tokens: Maximum completion tokens
+        """        
+        self.llm_type = llm_type
+        self.model_name = model_name
+        self.temperature = temperature
+        self.top_p = top_p
+        self.max_completion_tokens = max_completion_tokens
         
         # Create llm service
-        self.llm = self.get_llm(llm_type=llm_type)
+        self.llm = self.get_llm(
+            llm_type=llm_type,
+            model_name=model_name,
+            temperature=temperature,
+            top_p=top_p,
+            max_completion_tokens=max_completion_tokens
+        )
         
 
     
-    def get_llm(self, llm_type: Optional[str]= None, model_name: Optional[str] = None) -> BaseChatModel:
+    def get_llm(
+        self, 
+        llm_type: str, 
+        model_name: str,
+        temperature: float,
+        top_p: float,
+        max_completion_tokens: int
+    ) -> BaseChatModel:
         """Factory method để tạo LLM phù hợp"""
         settings = get_settings()
-
-        if llm_type is None:
-            llm_type = self.llm_type
 
         if llm_type.lower() == "nvidia":
             if settings.nvidia_api_key is None:
@@ -39,6 +64,9 @@ class LLMService:
             return get_nvidia_llm(
                 api_key=settings.nvidia_api_key,
                 model_name=model_name or ModelConstants.DEFAULT_MODELS['nvidia'],
+                temperature=temperature,
+                top_p=top_p,
+                max_completion_tokens=max_completion_tokens
             )
 
         elif llm_type.lower() == "google_gen_ai":
@@ -46,7 +74,10 @@ class LLMService:
                 raise ValueError("GOOGLE GENAI API KEY is not set")
             return get_google_genai_llm(
                 api_key=settings.google_api_key,
-                model_name=model_name or ModelConstants.DEFAULT_MODELS['google_gen_ai'],  # ✅
+                model_name=model_name or ModelConstants.DEFAULT_MODELS['google_gen_ai'],
+                temperature=temperature,
+                top_p=top_p,
+                max_completion_tokens=max_completion_tokens
             )
 
         else:
@@ -65,27 +96,46 @@ class LLMService:
         return self.llm.invoke(prompt)
 
 
-def get_nvidia_llm(api_key: str, model_name: str = ModelConstants.DEFAULT_MODELS['nvidia']) -> BaseChatModel:
+def get_nvidia_llm(
+    api_key: str, 
+    model_name: str = ModelConstants.DEFAULT_MODELS['nvidia'],
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
+    max_completion_tokens: Optional[int] = None
+) -> BaseChatModel:
     """Khởi tạo NVIDIA LLM thông qua LangChain"""
     return ChatNVIDIA(
         model=model_name,
         nvidia_api_key=api_key,
-        temperature=0.8,
-        top_p=0.95,
+        temperature=temperature if temperature is not None else 1.0,
+        top_p=top_p if top_p is not None else 1.0,
         streaming=False,
         callbacks=[StreamingStdOutCallbackHandler()],
-        max_completion_tokens=100000
+        max_completion_tokens=max_completion_tokens if max_completion_tokens is not None else 100000
     )
     
 
 def get_google_genai_llm(
     api_key: str,
-    model_name: str = ModelConstants.DEFAULT_MODELS['google_gen_ai']
+    model_name: str = ModelConstants.DEFAULT_MODELS['google_gen_ai'],
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
+    max_completion_tokens: Optional[int] = None
 ) -> BaseChatModel:
     """Khởi tạo Google LLM thông qua LangChain"""
-    return ChatGoogleGenerativeAI(
-        model=model_name, 
-        api_key=api_key,  
-        disable_streaming=False,
-        callbacks=[StreamingStdOutCallbackHandler()],
-    )
+    params = {
+        "model": model_name,
+        "api_key": api_key,
+        "disable_streaming": False,
+        "callbacks": [StreamingStdOutCallbackHandler()],
+    }
+    
+    # Chỉ thêm các tham số nếu chúng được cung cấp
+    if temperature is not None:
+        params["temperature"] = temperature
+    if top_p is not None:
+        params["top_p"] = top_p
+    if max_completion_tokens is not None:
+        params["max_output_tokens"] = max_completion_tokens
+    
+    return ChatGoogleGenerativeAI(**params)

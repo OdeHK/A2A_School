@@ -95,7 +95,7 @@ class TeacherAgent:
             logger.info("--- 1. ROUTER: Phân loại yêu cầu ---")
             logger.info(f"User {username} request: {state['user_request']}")
             
-            llm = self.llm_service.get_llm()
+            llm = self.llm_service.llm
             # -----------------------------
             # Step 2: Lấy ngữ cảnh hội thoại gần đây (nếu có)
             # -----------------------------

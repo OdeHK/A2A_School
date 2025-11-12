@@ -89,7 +89,7 @@ class SummarizationService:
             username = state.get("username")
             document_id = state.get("document_id")
             context_for_llm = state.get("context_for_llm")
-            llm = self.llm_service.get_llm()
+            llm = self.llm_service.llm
             try:
                 content_data = self.document_management_service.get_content_data(
                     username=username, document_id=document_id
@@ -198,7 +198,7 @@ class SummarizationService:
             # -----------------------------
             # Generate summary using LLM
             # -----------------------------
-            llm = self.llm_service.get_llm()
+            llm = self.llm_service.llm
             
             # Prepare input
             llm_input = {
