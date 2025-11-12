@@ -96,29 +96,15 @@ class SummarizationService:
                 content_data = self.document_management_service.get_content_data(
                     username=username, document_id=document_id
                 )
-                logger.info(f"✅ Retrieved content_data for user={username}, document_id={document_id}")
-                if not content_data:
-                    logger.error(f"❌ No content_data returned for user={username}, document_id={document_id}")
-                    return {"error": "No content found for the given document."}
-
-                if "content" not in content_data:
-                    logger.error(f"❌ 'content' key missing in content_data: {content_data.keys()}")
-                    return {"error": "Invalid content format returned from document_management_service."}
-
-                if not isinstance(content_data["content"], list):
-                    logger.error("❌ content_data['content'] is not a list.")
-                    return {"error": "Invalid content format: expected list of items."}
-
-            except Exception as e:
-                logger.exception("❌ Error while retrieving content_data:")
-                raise
-            try:
                 titles_data = [item.get("title") for item in content_data["content"] if "title" in item]
-                logger.info(f"✅ Extracted {len(titles_data)} titles from document.")
+                logger.info(f"Extracted titles: {titles_data}")
             except Exception as e:
-                logger.exception("❌ Error while extracting titles from content_data:")
-                raise
-            
+                logger.error(f"Error retrieving document content: {e}")
+                return {
+                    **state,
+                    "summary_content": "Không thể truy xuất nội dung tài liệu."
+                }
+
             find_document_chain = find_titles_prompt | llm | JsonOutputParser()
             titles_data_str = json.dumps(titles_data, indent=2, ensure_ascii=False)
             

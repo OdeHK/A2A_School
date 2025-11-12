@@ -116,8 +116,16 @@ Yêu cầu của người dùng:
 </INPUT>
 
 <INSTRUCTIONS>
-- Nếu `user_request` và `summary_content` đều rỗng, chỉ cần tạo một bản tóm tắt ngắn gọn từ `original_content`.
-- Nếu `user_request` không rỗng, sử dụng cả `original_content`, `summary_content`, và `user_request` để điều chỉnh bản tóm tắt theo phản hồi của người dùng.
+- **Xử lý văn bản có nhiều phần riêng biệt:**
+  + Nếu `original_content` chứa nhiều phần được đánh dấu bằng cặp thẻ `<tiêu_đề>nội dung</tiêu_đề>`, bạn PHẢI tóm tắt từng phần riêng biệt.
+  + Mỗi phần tóm tắt phải bắt đầu bằng tiêu đề tương ứng (in đậm hoặc đánh dấu rõ ràng), sau đó là nội dung tóm tắt của phần đó.
+  + Giữ nguyên thứ tự các phần như trong văn bản gốc.
+  + Ngăn cách các phần tóm tắt bằng dòng trống để dễ đọc.
+
+- **Xử lý văn bản đơn giản:**
+  + Nếu `user_request` và `summary_content` đều rỗng, chỉ cần tạo một bản tóm tắt ngắn gọn từ `original_content`.
+  + Nếu `user_request` không rỗng, sử dụng cả `original_content`, `summary_content`, và `user_request` để điều chỉnh bản tóm tắt. Đối chiếu với original_content để chỉnh sửa summary_content sao cho phù hợp với yêu cầu của người dùng.
+
 - Đảm bảo bản tóm tắt cuối cùng ngắn gọn, mạch lạc và giữ được ý nghĩa gốc của văn bản.
 </INSTRUCTIONS>
 
@@ -125,6 +133,16 @@ Yêu cầu của người dùng:
 Kết quả đầu ra chỉ bao gồm văn bản tóm tắt.
 Không thêm vào bất kỳ lời chào hỏi, câu dẫn hay giải thích nào.
 Bản tóm tắt phải giữ được ý nghĩa gốc của văn bản.
+
+**Khi có nhiều phần riêng biệt:**
+- Định dạng mỗi phần như sau:
+  **[Tên tiêu đề]**
+  [Nội dung tóm tắt của phần này]
+  
+  [Dòng trống ngăn cách]
+  
+  **[Tên tiêu đề tiếp theo]**
+  [Nội dung tóm tắt của phần tiếp theo]
 </OUTPUT_GUIDELINES>
 
 <EXAMPLE>
@@ -142,5 +160,31 @@ Hãy làm cho bản tóm tắt ngắn gọn hơn.
 AI mang lại lợi ích lớn cho y tế, giáo dục, nhưng cũng đặt ra thách thức về đạo đức và bảo mật.
 </OUTPUT>
 </EXAMPLE>
+
+<EXAMPLE_MULTIPLE_SECTIONS>
+<INPUT>
+Văn bản gốc:
+<Giới thiệu về AI>
+Trí tuệ nhân tạo (AI) là một lĩnh vực của khoa học máy tính tập trung vào việc tạo ra các hệ thống có khả năng thực hiện các nhiệm vụ đòi hỏi trí thông minh của con người. AI đã phát triển mạnh mẽ trong những năm gần đây nhờ vào sự tiến bộ của công nghệ tính toán và lượng dữ liệu khổng lồ có sẵn.
+</Giới thiệu về AI>
+
+<Ứng dụng của AI>
+AI được ứng dụng rộng rãi trong nhiều lĩnh vực như y tế (chẩn đoán bệnh, phát triển thuốc), giáo dục (hệ thống học tập cá nhân hóa), tài chính (phát hiện gian lận, giao dịch tự động), và giải trí (đề xuất nội dung, trò chơi thông minh).
+</Ứng dụng của AI>
+
+Bản tóm tắt trước đó:
+
+
+Yêu cầu của người dùng:
+
+</INPUT>
+<OUTPUT>
+**Giới thiệu về AI**
+AI là lĩnh vực khoa học máy tính tạo ra hệ thống có khả năng thực hiện nhiệm vụ đòi hỏi trí thông minh con người. Lĩnh vực này phát triển mạnh nhờ công nghệ tính toán và dữ liệu lớn.
+
+**Ứng dụng của AI**
+AI được ứng dụng trong y tế (chẩn đoán bệnh), giáo dục (học tập cá nhân hóa), tài chính (phát hiện gian lận), và giải trí (đề xuất nội dung).
+</OUTPUT>
+</EXAMPLE_MULTIPLE_SECTIONS>
 """)
 
