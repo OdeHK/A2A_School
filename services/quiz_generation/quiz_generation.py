@@ -60,6 +60,7 @@ class QuizGenerationService:
         self.llm_service = llm_service
         self.vector_service = rag_service.vector_service
         self.database_service = database_service
+        self.generation_node_llm_service = LLMService(llm_type="nvidia", model_name="openai/gpt-oss-120b", temperature=0.7, top_p=1.0, max_completion_tokens=50000)
         self.workflow = self._create_workflow()
 
     def generate_quiz_set(self, 
@@ -233,7 +234,7 @@ class QuizGenerationService:
                     logger.info(f"Batch invoking LLM with {len(batch_prompt_inputs)} prompts")
                     
                     # Create chain without parser (returns AIMessage)
-                    chain = quiz_generation_prompt | self.llm_service.llm
+                    chain = quiz_generation_prompt | self.generation_node_llm_service.llm
                     
                     # Batch invoke - returns List[AIMessage]
                     batch_ai_messages = chain.batch(batch_prompt_inputs)

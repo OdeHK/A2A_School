@@ -28,7 +28,7 @@ class PlanTaskOutputList(BaseModel):
 class QuizQuestion(BaseModel):
     type: str = Field(..., description="Type of question: 'multiple_choice' or 'essay'.")
     title: str = Field(..., description="The question text")
-    options: Optional[List[str]] = Field(default=None, description="Multiple choice options (only for multiple_choice type)")
+    options: Optional[List[str]] = Field(default=None, description="Multiple choice options (only for multiple_choice type). Don't include option prefixes like A., B., C., D.")
     answer: Optional[str] = Field(default=None, description="Correct answer (only for multiple_choice type)")
     answer_explanation: Optional[str] = Field(default=None, description="Explanation for the answer (only for multiple_choice type)")
 
