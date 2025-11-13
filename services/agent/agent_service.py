@@ -9,7 +9,7 @@ from httplib2 import Http
 from oauth2client import client, file, tools
 from langgraph.graph import StateGraph, END
 
-from prompts.agent import router_prompt
+from prompts.agent import router_prompt, style_applier_prompt
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from services.quiz_generation.converter import QuizToGoogleFormConverter
 from services.rag.rag_service import RagService
@@ -200,6 +200,37 @@ class TeacherAgent:
                     )
                 
                 return {"answer": error_msg}
+        def style_applier_node(state: ParentGraphState):
+            """Apply writing style to the summarized content."""
+            logger.info("--- Step 2b: Executing Style Application Subgraph ---")
+
+            llm = self.llm_service.get_llm()
+
+            # Retrieve the most recent non-general memory entry (if enabled)
+            previous_content = None
+            if self.enable_memory and self.memory:
+                for entry in reversed(self.memory.entries):
+                    if entry.task_type != "general":
+                        previous_content = entry.content
+                        break
+            #logger.info(f"Previous content for styling: {previous_content}")
+
+            if not previous_content:
+                logger.warning("No previous content found for styling. Using current state content instead.")
+                previous_content = state.get("content", "")
+
+            # Prepare model input
+            llm_input = {
+                "user_request": state.get("user_request", ""),
+                "content": previous_content,
+            }
+
+            # Build and execute the style refinement chain
+            style_applier_chain = style_applier_prompt | llm | StrOutputParser()
+            styled_content = style_applier_chain.invoke(llm_input)
+
+            return {"answer": styled_content}
+
 
         def rag_qa_node(state: ParentGraphState):
             """Trả lời câu hỏi dựa trên tài liệu (RAG) với metadata filtering."""
@@ -320,6 +351,7 @@ class TeacherAgent:
         workflow = StateGraph(ParentGraphState)
         workflow.add_node("router", router_node) 
         workflow.add_node("summarization", summarization_node) 
+        workflow.add_node("style_applier", style_applier_node)
         workflow.add_node("rag_qa", rag_qa_node)
         workflow.add_node("quiz_generation", quiz_generation_node)
         workflow.add_node("create_form", create_form_node)
@@ -330,6 +362,7 @@ class TeacherAgent:
             decide_route,
             {
                 "summarization": "summarization",
+                "style_applier": "style_applier",
                 "quiz_generation": "quiz_generation",
                 "create_form": "create_form",
                 "rag_qa": "rag_qa",
@@ -338,6 +371,7 @@ class TeacherAgent:
         )
 
         workflow.add_edge("summarization", END)
+        workflow.add_edge("style_applier", END)
         workflow.add_edge("quiz_generation", END)
         workflow.add_edge("create_form", END)
         workflow.add_edge("rag_qa", END)
@@ -368,7 +402,7 @@ class TeacherAgent:
         
         # TODO: Kiểm tra token hết hạn chưa, nếu hết hạn thì yêu cầu đăng nhập lại
         return None
-        return None
+        
 
     def _create_google_form(self, quizset_data: QuizQuestionOutput, username: str) -> str:
         """
@@ -478,22 +512,6 @@ class TeacherAgent:
             logger.error(f"Error handling chat query: {str(e)}")
             return "Đã xảy ra lỗi khi xử lý yêu cầu."
     
-    def get_memory_context(self,  
-                           document_id: Optional[str] = None,
-                           task_type: Optional[str] = None) -> str:
-        """
-        Get memory context for LLM
-        
-        Args:
-            max_tokens: Maximum tokens for context
-            
-        Returns:
-            Context string
-        """
-        if not self.enable_memory or not self.memory:
-            return ""
-
-        return self.memory.get_context_for_llm(document_id=document_id, task_type=task_type)
 
 
 # --- Logic quyết định rẽ nhánh ---
