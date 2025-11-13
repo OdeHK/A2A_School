@@ -1,189 +1,162 @@
 from langchain_core.prompts import ChatPromptTemplate
 
+
 find_titles_prompt = ChatPromptTemplate.from_template(
 """
 <ROLE>
-Bạn là một công cụ phân tích ý định và đối sánh ngữ nghĩa thông minh, chuyên trích xuất thông tin.
+You are an intent-analysis and semantic-matching tool specialized in extracting information from user requests.
 </ROLE>
 
 <OBJECTIVE>
-Nhiệm vụ của bạn là phân tích yêu cầu của người dùng (`user_request`) để **phân biệt rõ ràng** giữa:
-1.  Một **yêu cầu tìm kiếm/điều hướng** (khi người dùng muốn tìm một tiêu đề cụ thể).
-2.  Một **yêu cầu toàn bộ tài liệu** (khi người dùng muốn tóm tắt hoặc biết nội dung chính của toàn bộ tài liệu).
-3.  Một **phản hồi, mệnh lệnh chỉnh sửa, hoặc câu hỏi chung chung** (khi người dùng đưa feedback như "ngắn hơn", "dài hơn", hoặc hỏi "mạch lạc hơn đi?").
+Your task is to analyze the user's request (`user_request`) and clearly distinguish between:
+1. A Search/Navigation Request (when the user wants to find or go to a specific section title).
+2. A Full Document Request (when the user wants a summary or overall content of the entire document).
+3. Feedback/Command/General (when the user gives feedback like "shorter", "longer", or asks general questions).
 
-**CHỈ KHI** `user_request` là một **yêu cầu tìm kiếm/điều hướng** (Loại 1), bạn mới thực hiện đối sánh và tìm các tiêu đề phù hợp nhất từ `title_list`.
+ONLY when `user_request` is a Search/Navigation Request (Type 1) should you perform matching against `title_list`.
 </OBJECTIVE>
 
 <INPUT_SCHEMA>
-title_list: Một danh sách JSON (list) các chuỗi (string), đại diện cho các tiêu đề có sẵn trong một tài liệu đã được chọn trước.
-user_request: Một chuỗi văn bản (string) chứa truy vấn của người dùng.
+title_list: A JSON list of strings representing section titles present in the selected document.
+user_request: A string containing the user's query or instruction.
 </INPUT_SCHEMA>
 
 <INPUT>
-Danh sách tiêu đề: ```json
+Title list: ```json
 {title_list}
-Yêu cầu của người dùng: "{user_request}" 
+User request: "{user_request}"
 </INPUT>
 
-<INSTRUCTIONS> Thực hiện theo quy trình nghiêm ngặt sau:
-1. Phân tích ý định (Intent Analysis): Đọc kỹ user_request và phân loại mục đích chính của nó vào MỘT trong hai loại sau:
-- **Loại 1: Yêu cầu Tìm kiếm/Điều hướng (Search/Navigation Request):** Người dùng chủ động muốn tìm, xem, đọc, biết về, hoặc đi đến một chủ đề, một phần nội dung cụ thể mà có khả năng được mô tả bởi một tiêu đề trong title_list.
-  --Ví dụ Loại 1: "Cho tôi xem phần Transformer", "Thông tin về CNN", "Ứng dụng thực tế là gì?", "Phần Mạng hồi tiếp".
-- **Loại 2: Yêu cầu Toàn bộ Tài liệu (Full Document Request):** Người dùng muốn thực hiện một hành động (như "tóm tắt", "nội dung chính", "nói về") trên toàn bộ tài liệu, chứ không phải một phần/tiêu đề cụ thể.
-- **Loại 3: Phản hồi/Mệnh lệnh/Chung chung (Feedback/Command/General):** Người dùng đang nhận xét về một kết quả trước đó (ví dụ: "tóm tắt dài hơn", "ngắn hơn", "mạch lạc hơn", "viết lại", "ok", "hay quá"), hoặc hỏi một câu chung chung không nhắm vào tiêu đề cụ thể (ví dụ: "Tài liệu này nói về cái gì?", "bạn là ai?").
-   --Ví dụ Loại 3: "Tóm tắt toàn bộ tài liệu", "Cho tôi biết nội dung chính của tất cả", "Tài liệu này nói về cái gì?".
-2. Quy trình xử lý (Processing Logic):
-- NẾU ý định là Loại 1 (Tìm kiếm/Điều hướng): Tiếp tục sang Bước 3 (Đối sánh).
-- NẾU ý định là Loại 2 (Toàn bộ Tài liệu): Dừng lại ngay lập tức. Kết quả của bạn là ['full_document'].
-- NẾU ý định là Loại 3 (Phản hồi/Mệnh lệnh/Chung chung): Dừng lại ngay lập tức. Kết quả của bạn là một danh sách rỗng [].
-3. Đối sánh (Matching): (Chỉ thực hiện nếu là Loại 1)
-- So sánh ý định tìm kiếm của user_request với TỪNG mục trong title_list.
-- Tìm ra TẤT CẢ các tiêu đề trong title_list phù hợp về mặt ngữ nghĩa (semantic match) hoặc khớp chính xác (exact match) với yêu cầu của người dùng.
-4. Quy tắc lựa chọn (Selection Rules):
-- NẾU TÌM THẤY một hoặc nhiều tiêu đề khớp (từ Bước 3): Trả về một danh sách chứa TẤT CẢ các tiêu đề đó.
-- NẾU KHÔNG TÌM THẤY tiêu đề nào khớp (kể cả khi là yêu cầu Loại 1 nhưng không có gì khớp): Trả về một danh sách rỗng [].
+<INSTRUCTIONS>
+- **Always respond in Vietnamese.**
+- Follow this strict process:
+1. Intent Analysis: Read the `user_request` and classify it into ONE of three types:
+   - Type 1 — Search/Navigation Request: The user wants to find, view, read, or navigate to a specific topic or section that is likely described by a title in `title_list`.
+   - Type 2 — Full Document Request: The user requests an action (e.g., "summarize", "main points") for the entire document rather than a specific section.
+   - Type 3 — Feedback/Command/General: The user provides feedback or a general command (e.g., "shorter", "longer", "rewrite", or asks a broad question like "what is this document about?").
+2. Processing Logic:
+   - IF the intent is Type 1 (Search/Navigation): proceed to Step 3 (Matching).
+   - IF the intent is Type 2 (Full Document): STOP and return `['full_document']`.
+   - IF the intent is Type 3 (Feedback/Command/General): STOP and return an empty list `[]`.
+3. Matching (only for Type 1):
+   - Compare the search intent in `user_request` against EACH item in `title_list`.
+   - Find ALL titles that are a semantic match or exact match to the user's request.
+4. Selection Rules:
+   - IF one or more titles match: return a list containing ALL matching titles.
+   - IF no titles match (even if intent is Type 1): return an empty list `[]`.
 </INSTRUCTIONS>
 
-<OUTPUT_GUIDELINES> 
-Câu trả lời BẮT BUỘC phải là một đối tượng JSON dạng danh sách (list) các chuỗi (string). 
-Nếu là Loại 1 và tìm thấy, trả về danh sách tiêu đề (ví dụ: ["Tiêu đề A"]).
-Nếu là Loại 2, trả về ['full_document'].
-Nếu là Loại 3, hoặc Loại 1 nhưng không tìm thấy, trả về danh sách rỗng []. Không bao gồm bất kỳ văn bản hội thoại, lời giải thích, hay định dạng markdown nào.
+<OUTPUT_GUIDELINES>
+The output MUST be a JSON list of strings. If Type 1 and matches are found, return the list of matched titles (e.g. `["Title A"]`). If Type 2, return `['full_document']`. If Type 3 or Type 1 with no matches, return an empty list `[]`. Do not include any explanatory text or markdown.
 </OUTPUT_GUIDELINES>
 
-<EXAMPLE 1: Tìm thấy một khớp (Loại 1)> <INPUT> Danh sách tiêu đề: ```json [ "Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế" ]
-Yêu cầu của người dùng: "Tôi muốn xem phần về Transformer."
+<EXAMPLE>
+<INPUT> Title list: ```json [ "Convolutional Neural Networks (CNN)", "Recurrent Neural Networks (RNN)", "Transformer", "Practical Applications" ]
+User request: "Show me the Transformer section." 
 </INPUT>
-<OUTPUT> 
-["Transformer"]
-</OUTPUT> 
+<OUTPUT> ["Transformer"]
 </EXAMPLE>
 
 
-<EXAMPLE 2: Yêu cầu cụ thể nhưng không có trong danh sách> <INPUT> Danh sách tiêu đề: ```json [ "Giới thiệu chung", "Hồi quy tuyến tính", "Phân loại bằng cây quyết định", "Kết luận" ]
-Yêu cầu của người dùng: "Cho tôi xem phần về Mạng Neuron Tích chập."
+<EXAMPLE_NO_MATCH>
+<INPUT> Title list: ```json [ "Introduction", "Linear Regression", "Decision Tree Classification", "Conclusion" ]
+User request: "Show me Convolutional Neural Networks." 
 </INPUT>
-<OUTPUT> 
-None
-</OUTPUT> 
-</EXAMPLE>
-
-<EXAMPLE 3: Phản hồi / Mệnh lệnh (Loại 3)>
-<INPUT> Danh sách tiêu đề: ```json [ "Giới thiệu", "Phân tích dữ liệu", "Mô hình học máy", "Kết luận" ]
-Yêu cầu của người dùng: "Tóm tắt ngắn hơn."
-</INPUT>
-<OUTPUT>
-[]
-</OUTPUT>
-
-<EXAMPLE 8: Yêu cầu tóm tắt toàn bộ (Loại 2) - **MỚI**>
-<INPUT>
-Danh sách tiêu đề: ```json
-["Mạng neuron tích chập (CNN)", "Mạng hồi tiếp (RNN)", "Transformer", "Ứng dụng thực tế"]
-Yêu cầu của người dùng: "Hãy tóm tắt toàn bộ tài liệu." 
-</INPUT> 
-<OUTPUT> ['full_document'] 
-</OUTPUT>
-""" )
+<OUTPUT> []
+</EXAMPLE_NO_MATCH>
+""")
 
 
 summarize_content_prompt = ChatPromptTemplate.from_template(
 """
 <ROLE>
-Bạn là một hệ thống tóm tắt văn bản chuyên nghiệp.
+You are a professional text summarization system.
 </ROLE>
 
 <OBJECTIVE>
-Tạo ra một bản tóm tắt ngắn gọn, súc tích và chính xác bằng tiếng Việt từ một đoạn văn bản được cung cấp.
+Produce a short, concise, and accurate summary in Vietnamese from the provided text.
 </OBJECTIVE>
 
 <INPUT_SCHEMA>
-original_content: Văn bản gốc cần được tóm tắt.
-summary_content: Bản tóm tắt trước đó (nếu có).
-user_request: Yêu cầu của người dùng (nếu có).
+original_content: The original text to summarize.
+summary_content: Previously generated summary (if any).
+user_request: User instructions or preferences (if any).
 </INPUT_SCHEMA>
 
 <INPUT>
-Văn bản gốc:
+Original content:
 {original_content}
 
-Bản tóm tắt trước đó:
+Previous summary:
 {summary_content}
 
-Yêu cầu của người dùng:
+User request:
 {user_request}
 </INPUT>
 
 <INSTRUCTIONS>
-- **Xử lý văn bản có nhiều phần riêng biệt:**
-  + Nếu `original_content` chứa nhiều phần được đánh dấu bằng cặp thẻ `<tiêu_đề>nội dung</tiêu_đề>`, bạn PHẢI tóm tắt từng phần riêng biệt.
-  + Mỗi phần tóm tắt phải bắt đầu bằng tiêu đề tương ứng (in đậm hoặc đánh dấu rõ ràng), sau đó là nội dung tóm tắt của phần đó.
-  + Giữ nguyên thứ tự các phần như trong văn bản gốc.
-  + Ngăn cách các phần tóm tắt bằng dòng trống để dễ đọc.
-
-- **Xử lý văn bản đơn giản:**
-  + Nếu `user_request` và `summary_content` đều rỗng, chỉ cần tạo một bản tóm tắt ngắn gọn từ `original_content`.
-  + Nếu `user_request` không rỗng, sử dụng cả `original_content`, `summary_content`, và `user_request` để điều chỉnh bản tóm tắt. Đối chiếu với original_content để chỉnh sửa summary_content sao cho phù hợp với yêu cầu của người dùng.
-
-- Đảm bảo bản tóm tắt cuối cùng ngắn gọn, mạch lạc và giữ được ý nghĩa gốc của văn bản.
+- **Always respond in Vietnamese.**
+- **Multiple distinct sections handling:** If `original_content` contains multiple sections marked with tags like `<Title>content</Title>`, you MUST summarize each section separately.
+  - Each section summary should begin with the corresponding title (clearly indicated), followed by that section's summary.
+  - Preserve the original order of sections.
+  - Separate section summaries with a blank line for readability.
+- **Single block handling:** If `user_request` and `summary_content` are empty, create a concise summary from `original_content`.
+- If `user_request` is not empty, use `original_content`, `summary_content`, and `user_request` to adapt the final summary.
+- Ensure the final summary is concise, coherent, and preserves the original meaning.
 </INSTRUCTIONS>
 
 <OUTPUT_GUIDELINES>
-Kết quả đầu ra chỉ bao gồm văn bản tóm tắt.
-Không thêm vào bất kỳ lời chào hỏi, câu dẫn hay giải thích nào.
-Bản tóm tắt phải giữ được ý nghĩa gốc của văn bản.
+Output only the summary text in Vietnamese. Do not add greetings, explanations, or extra metadata.
 
-**Khi có nhiều phần riêng biệt:**
-- Định dạng mỗi phần như sau:
-  **[Tên tiêu đề]**
-  [Nội dung tóm tắt của phần này]
-  
-  [Dòng trống ngăn cách]
-  
-  **[Tên tiêu đề tiếp theo]**
-  [Nội dung tóm tắt của phần tiếp theo]
+**If multiple sections are present:** Format each part as:
+**[Section Title]**
+[Summary of that section]
+
+[blank line]
+
+**[Next Section Title]**
+[Summary of next section]
 </OUTPUT_GUIDELINES>
 
 <EXAMPLE>
 <INPUT>
-Văn bản gốc:
-Trí tuệ nhân tạo (AI) đang thay đổi nhanh chóng nhiều lĩnh vực của cuộc sống, từ y tế, giáo dục đến giải trí. Các hệ thống AI có khả năng phân tích dữ liệu lớn, nhận dạng mẫu và đưa ra dự đoán với độ chính xác ngày càng cao. Mặc dù mang lại nhiều lợi ích to lớn, việc phát triển AI cũng đặt ra những thách thức về đạo đức, bảo mật và tác động đến thị trường lao động.
+Original content:
+Artificial intelligence (AI) is rapidly transforming many areas of life, from healthcare and education to entertainment. AI systems can analyze large datasets, recognize patterns, and make increasingly accurate predictions. While offering many benefits, AI development raises ethical, security, and labor market concerns.
 
-Bản tóm tắt trước đó:
-Trí tuệ nhân tạo (AI) mang lại nhiều lợi ích cho các ngành như y tế, giáo dục nhờ khả năng phân tích dữ liệu và dự đoán, nhưng cũng tạo ra các thách thức về đạo đức, bảo mật và lao động.
+Previous summary:
+None
 
-Yêu cầu của người dùng:
-Hãy làm cho bản tóm tắt ngắn gọn hơn.
+User request:
+None
 </INPUT>
 <OUTPUT>
-AI mang lại lợi ích lớn cho y tế, giáo dục, nhưng cũng đặt ra thách thức về đạo đức và bảo mật.
+AI brings major benefits to healthcare and education through data analysis and prediction, but raises ethical and security challenges.
 </OUTPUT>
 </EXAMPLE>
 
 <EXAMPLE_MULTIPLE_SECTIONS>
 <INPUT>
-Văn bản gốc:
-<Giới thiệu về AI>
-Trí tuệ nhân tạo (AI) là một lĩnh vực của khoa học máy tính tập trung vào việc tạo ra các hệ thống có khả năng thực hiện các nhiệm vụ đòi hỏi trí thông minh của con người. AI đã phát triển mạnh mẽ trong những năm gần đây nhờ vào sự tiến bộ của công nghệ tính toán và lượng dữ liệu khổng lồ có sẵn.
-</Giới thiệu về AI>
+Original content:
+<Introduction to AI>
+Artificial intelligence (AI) is a field of computer science focused on creating systems that perform tasks requiring human-like intelligence. AI has advanced significantly due to better compute and large datasets.
+</Introduction to AI>
 
-<Ứng dụng của AI>
-AI được ứng dụng rộng rãi trong nhiều lĩnh vực như y tế (chẩn đoán bệnh, phát triển thuốc), giáo dục (hệ thống học tập cá nhân hóa), tài chính (phát hiện gian lận, giao dịch tự động), và giải trí (đề xuất nội dung, trò chơi thông minh).
-</Ứng dụng của AI>
+<Applications of AI>
+AI is used across healthcare (diagnosis, drug discovery), education (personalized learning), finance (fraud detection, trading), and entertainment (recommendations, smart games).
+</Applications of AI>
 
-Bản tóm tắt trước đó:
+Previous summary:
+None
 
-
-Yêu cầu của người dùng:
-
+User request:
+None
 </INPUT>
 <OUTPUT>
-**Giới thiệu về AI**
-AI là lĩnh vực khoa học máy tính tạo ra hệ thống có khả năng thực hiện nhiệm vụ đòi hỏi trí thông minh con người. Lĩnh vực này phát triển mạnh nhờ công nghệ tính toán và dữ liệu lớn.
+**Introduction to AI**
+AI is the computer science field that builds systems to perform tasks requiring human intelligence. It has grown rapidly thanks to improved compute and large datasets.
 
-**Ứng dụng của AI**
-AI được ứng dụng trong y tế (chẩn đoán bệnh), giáo dục (học tập cá nhân hóa), tài chính (phát hiện gian lận), và giải trí (đề xuất nội dung).
+**Applications of AI**
+AI is applied in healthcare (diagnosis), education (personalized learning), finance (fraud detection), and entertainment (recommendation systems).
 </OUTPUT>
 </EXAMPLE_MULTIPLE_SECTIONS>
 """)
