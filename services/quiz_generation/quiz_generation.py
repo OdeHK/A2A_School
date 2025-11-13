@@ -1,5 +1,5 @@
 from typing import TypedDict, Dict, Any, List, Optional, Tuple
-from pydantic import Field
+from pydantic import Field, ValidationError
 from services.rag.rag_service import RagService
 from services.llm_service import LLMService
 from services.database_service import DatabaseService
@@ -7,10 +7,12 @@ from services.models import PlanTaskOutputList, QuizQuestion, QuizQuestionOutput
 from langchain.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.messages import AIMessage
 from prompts.quiz_generation import get_plan_prompt, get_quiz_generation_prompt
 import json
 import logging
 import regex as re
+import ast
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,8 @@ def format_docs(documents) -> str:
         return ""
     return "\n\n".join([doc.page_content for doc in documents])
 
+
+
 class CustomPydanticOutputParser(PydanticOutputParser):
     def parse(self, text: str) -> Any:
         # Check whether the text is wrapped in triple backticks
@@ -27,12 +31,6 @@ class CustomPydanticOutputParser(PydanticOutputParser):
             # If not, wrap it in triple backticks
             text = f"```json\n{text}\n```"
 
-        # # Add double backslashes in latex expressions
-        # text = re.sub(
-        #     r'\$(.+?)\$',
-        #     lambda m: "$" + m.group(1).replace("\\", "\\\\") + "$",
-        #     text
-        # )
         return super().parse(text)
 
 # ====== Graph State =========
@@ -171,11 +169,10 @@ class QuizGenerationService:
                 logger.info("=== MAP GENERATE NODE END ===")
                 return {**state, "generated_questions": generated_questions}
             
-            # Create Pydantic parser for quiz questions 
-            quiz_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
-            
-            # Create prompt template
+            # Create prompt template and format instructions
             quiz_generation_prompt = get_quiz_generation_prompt()
+            format_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
+            format_instructions = format_parser.get_format_instructions()
             
             # Step 1: Collect all prompt inputs for batch processing
             batch_prompt_inputs = []
@@ -221,7 +218,7 @@ class QuizGenerationService:
                         "requirements": task.question_requirements,
                         "section_title": task.section_title,
                         "section_context": task.query_string,
-                        "format_instructions": quiz_parser.get_format_instructions()
+                        "format_instructions": format_instructions
                     }
                     
                     batch_prompt_inputs.append(prompt_input)
@@ -235,22 +232,24 @@ class QuizGenerationService:
                 try:
                     logger.info(f"Batch invoking LLM with {len(batch_prompt_inputs)} prompts")
                     
-                    # Create chain with parser
-                    chain = quiz_generation_prompt | self.llm_service.llm | quiz_parser
+                    # Create chain without parser (returns AIMessage)
+                    chain = quiz_generation_prompt | self.llm_service.llm
                     
-                    # Batch invoke
-                    batch_results = chain.batch(batch_prompt_inputs)
+                    # Batch invoke - returns List[AIMessage]
+                    batch_ai_messages = chain.batch(batch_prompt_inputs)
+                    logger.info(f"Batch invoke completed, received {len(batch_ai_messages)} AIMessages")
                     
-                    logger.info(f"Batch invoke completed, processing {len(batch_results)} results")
+                    # Parse AIMessages using ast.literal_eval
+                    parsed_quiz_outputs = self._parse_ai_messages_to_quiz_output(batch_ai_messages)
+                    logger.info(f"Successfully parsed {len(parsed_quiz_outputs)} quiz outputs")
                     
                     # Step 3: Process batch results
-                    for i, (quiz_result, task) in enumerate(zip(batch_results, task_info_list)):
-                        logger.info(f"Processing result {i+1}/{len(batch_results)} for section: {task.section_title}")
-                        logger.info(f"LLM output: {quiz_result}")
+                    for i, (quiz_result, task) in enumerate(zip(parsed_quiz_outputs, task_info_list)):
+                        logger.info(f"Processing result {i+1}/{len(parsed_quiz_outputs)} for section: {task.section_title}")
+                        logger.info(f"Quiz output has {len(quiz_result.questions)} questions")
+                        logger.info(f"Quiz output: {quiz_result}")
                         
-                        generated_questions.questions.extend(quiz_result.questions)
-                        logger.info(f"Đã generate thành công {len(quiz_result.questions)} câu hỏi cho section '{task.section_title}'")
-                        
+                        generated_questions.questions.extend(quiz_result.questions)  
                 except Exception as e:
                     logger.error(f"Error during batch LLM invocation: {e}")
             else:
@@ -401,3 +400,59 @@ class QuizGenerationService:
         start_page, end_page = search_section(toc_sections)
         
         return (start_page, end_page)
+    
+    @staticmethod
+    def _parse_ai_messages_to_quiz_output(ai_messages: List[Any]) -> List[QuizQuestionOutput]:
+        """
+        Parse list of AIMessage objects to QuizQuestionOutput using ast.literal_eval.
+        
+        Args:
+            ai_messages: List of AIMessage objects from LLM batch response
+            
+        Returns:
+            List of QuizQuestionOutput objects
+            
+        Raises:
+            ValueError: If parsing or validation fails
+        """
+        parsed_results = []
+        
+        for idx, message in enumerate(ai_messages):
+            content = ""
+            try:
+                # Extract content from AIMessage
+                if isinstance(message, AIMessage):
+                    content = message.content.removeprefix("```json").removesuffix("```") #type: ignore
+                else:
+                    content = str(message)
+                
+                # Parse using ast.literal_eval
+                parsed_dict = ast.literal_eval(content)
+                
+                # Validate and convert to Pydantic model
+                quiz_output = QuizQuestionOutput(**parsed_dict)
+                parsed_results.append(quiz_output)
+                
+                logger.info(f"Successfully parsed message {idx+1} with {len(quiz_output.questions)} questions")
+                
+            except ValidationError as e:
+                logger.error(f"Pydantic validation error for message {idx+1}: {e}")
+                logger.error(f"Content: {content if content else 'empty'}...")  # Log first 200 chars
+                continue
+            except (SyntaxError, ValueError) as e:
+                logger.error(f"Error parsing message {idx+1} with ast.literal_eval: {e}")
+                logger.error(f"Content: {content if content else 'empty'}...")  # Log first 200 chars
+                # Try json.loads as fallback
+                try:
+                    parsed_dict = json.loads(str(content))
+                    quiz_output = QuizQuestionOutput(**parsed_dict)
+                    parsed_results.append(quiz_output)
+                    logger.info(f"Successfully parsed message {idx+1} using json.loads fallback")
+                except Exception as json_error:
+                    logger.error(f"JSON fallback also failed for message {idx+1}: {json_error}")
+                    continue
+            except Exception as e:
+                logger.error(f"Unexpected error parsing message {idx+1}: {e}")
+                continue
+        
+        return parsed_results
