@@ -175,58 +175,14 @@ class QuizGenerationService:
             format_parser = PydanticOutputParser(pydantic_object=QuizQuestionOutput)
             format_instructions = format_parser.get_format_instructions()
             
-            # Step 1: Collect all prompt inputs for batch processing
-            batch_prompt_inputs = []
-            task_info_list = []  # Keep track of task information for logging
-            
-            for i, task in enumerate(section_tasks.tasks):
-                logger.info(f"Preparing batch input {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
-                logger.info(f"Section task details: {task}")
-                
-                try:
-                    # Get page range for the section to filter retrieved documents
-                    start_page, end_page = QuizGenerationService._get_page_range_using_section_id(toc_data, task.section_id)
-                    logger.info(f"Retrieving documents for query: {task.query_string}")
-                    
-                    # Prepare metadata filter for document-specific and user-specific queries
-                    conditions = [
-                        {"document_id": document_id},
-                        {"username": username}
-                    ]
-                    if start_page is not None:
-                        conditions.append({"page_number": {"$gte": start_page}}) #type: ignore
-                    if end_page is not None:
-                        conditions.append({"page_number": {"$lte": end_page}}) #type: ignore
-                    metadata_filter = {
-                        "$and": conditions
-                    }
-                    logger.info(f"Applying metadata filter: {metadata_filter}")
-                    
-                    # Use retrieve_documents with metadata filtering
-                    relevant_docs = self.rag_service.retrieve_documents(
-                        query=task.query_string,
-                        top_k=end_page - start_page + 1 if start_page is not None and end_page is not None else 10,
-                        filter=metadata_filter
-                    )
-                    
-                    logger.info(f"Retrieved {len(relevant_docs)} documents")
-                    logger.debug(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
-                    
-                    # Prepare prompt input for this task
-                    prompt_input = {
-                        "context": format_docs(relevant_docs),
-                        "num_questions": task.number_of_questions,
-                        "requirements": task.question_requirements,
-                        "section_title": task.section_title,
-                        "section_context": task.query_string,
-                        "format_instructions": format_instructions
-                    }
-                    
-                    batch_prompt_inputs.append(prompt_input)
-                    task_info_list.append(task)
-                    
-                except Exception as e:
-                    logger.error(f"Error preparing batch input for {task.section_title}: {e}")
+            # Step 1: Prepare batch inputs
+            batch_prompt_inputs = self._prepare_batch_inputs(
+                section_tasks=section_tasks,
+                toc_data=toc_data,
+                document_id=document_id,
+                username=username,
+                format_instructions=format_instructions
+            )
             
             # Step 2: Batch invoke LLM if we have valid inputs
             if batch_prompt_inputs:
@@ -245,7 +201,7 @@ class QuizGenerationService:
                     logger.info(f"Successfully parsed {len(parsed_quiz_outputs)} quiz outputs")
                     
                     # Step 3: Process batch results
-                    for i, (quiz_result, task) in enumerate(zip(parsed_quiz_outputs, task_info_list)):
+                    for i, (quiz_result, task) in enumerate(zip(parsed_quiz_outputs, section_tasks.tasks)):
                         logger.info(f"Processing result {i+1}/{len(parsed_quiz_outputs)} for section: {task.section_title}")
                         logger.info(f"Quiz output has {len(quiz_result.questions)} questions")
                         logger.info(f"Quiz output: {quiz_result}")
@@ -266,10 +222,16 @@ class QuizGenerationService:
             """
             logger.info("=== AGGREGATE NODE START ===")
             username = state.get("username")
+            section_tasks = state.get("section_tasks", PlanTaskOutputList(tasks=[]))
             generated_questions = state.get("generated_questions", QuizQuestionOutput(questions=[]))
             logger.info(f"Số lượng questions đã generate: {len(generated_questions.questions)}")
             
             if generated_questions.questions:
+                # If the number of generated questions is greater than requested, truncate the list
+                requested_total = sum([task.number_of_questions for task in section_tasks.tasks])
+                if len(generated_questions.questions) > requested_total:
+                    generated_questions.questions = generated_questions.questions[:requested_total]
+
                 # Convert to human-readable list
                 final_questions = QuizGenerationService._convert_quiz_question_output_to_list(questions=generated_questions)
             
@@ -457,3 +419,69 @@ class QuizGenerationService:
                 continue
         
         return parsed_results
+    
+    def _prepare_batch_inputs(self, section_tasks: PlanTaskOutputList, toc_data: List[TableOfContentsSection], document_id: str, username: str, format_instructions: str) -> List:
+        """
+        Prepare batch inputs for map generate node with metadata filtering
+        Args:
+            section_tasks: List of section tasks from plan node
+            toc_data: Table of contents data
+            document_id: Document ID for metadata filtering
+            username: Username for metadata filtering
+            format_instructions: Format instructions for LLM prompt
+        Returns:
+            batch_prompt_inputs: List of prompt inputs for batch LLM invocation
+        """
+            
+        # Step 1: Collect all prompt inputs for batch processing
+        batch_prompt_inputs = []
+        
+        for i, task in enumerate(section_tasks.tasks):
+            logger.info(f"Preparing batch input {i+1}/{len(section_tasks.tasks)}: {task.section_title}")
+            logger.info(f"Section task details: {task}")
+            
+            try:
+                # Get page range for the section to filter retrieved documents
+                start_page, end_page = QuizGenerationService._get_page_range_using_section_id(toc_data, task.section_id)
+                logger.info(f"Retrieving documents for query: {task.query_string}")
+                
+                # Prepare metadata filter for document-specific and user-specific queries
+                conditions = [
+                    {"document_id": document_id},
+                    {"username": username}
+                ]
+                if start_page is not None:
+                    conditions.append({"page_number": {"$gte": start_page}}) #type: ignore
+                if end_page is not None:
+                    conditions.append({"page_number": {"$lte": end_page}}) #type: ignore
+                metadata_filter = {
+                    "$and": conditions
+                }
+                logger.info(f"Applying metadata filter: {metadata_filter}")
+                
+                # Use retrieve_documents with metadata filtering
+                relevant_docs = self.rag_service.retrieve_documents(
+                    query=task.query_string,
+                    top_k=end_page - start_page + 1 if start_page is not None and end_page is not None else 10,
+                    filter=metadata_filter
+                )
+                
+                logger.info(f"Retrieved {len(relevant_docs)} documents")
+                logger.debug(f"Retrieved documents content: {[doc.page_content for doc in relevant_docs]}")
+                
+                # Prepare prompt input for this task
+                prompt_input = {
+                    "context": format_docs(relevant_docs),
+                    "num_questions": task.number_of_questions,
+                    "requirements": task.question_requirements,
+                    "section_title": task.section_title,
+                    "section_context": task.query_string,
+                    "format_instructions": format_instructions
+                }
+                
+                batch_prompt_inputs.append(prompt_input)
+                
+            except Exception as e:
+                logger.error(f"Error preparing batch input for {task.section_title}: {e}")
+                continue
+        return batch_prompt_inputs
